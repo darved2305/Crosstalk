@@ -1,0 +1,85 @@
+# ---- Secrets and credentials (never commit) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+sa-key*.json
+service-account*.json
+kubeconfig
+.kube/
+
+# ---- Terraform ----
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+terraform.tfvars
+*.auto.tfvars
+!terraform.tfvars.example
+
+# ---- Rust ----
+target/
+**/*.rs.bk
+*.pdb
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# ---- Node / Next.js ----
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+
+# ---- Experiment data and artifacts (large, regenerable, or sensitive) ----
+data/
+artifacts/
+captures/
+*.pcap
+*.pcapng
+*.parquet
+*.arrow
+models/*.pkl
+models/*.pt
+models/*.joblib
+ml/reports/*.png
+ml/reports/*.pdf
+
+# ---- Logs and local scratch ----
+*.log
+logs/
+tmp/
+scratch/
+
+# ---- Editors and OS ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.DS_Store
+Thumbs.db
+desktop.ini
