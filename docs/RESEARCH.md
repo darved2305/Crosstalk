@@ -1,620 +1,648 @@
 # RESEARCH.md — Crosstalk
 
-**Literature, industry and open-source review for**
-**CROSSTALK — Measuring Privacy Leaks in Encrypted AI Traffic and Testing Defenses on Google Cloud**
+**The evidence authority.** Every factual claim that drives Crosstalk's architecture, scope or novelty is recorded here with its source, source type, date and a claim label. `PRODUCT.md` (research/product authority) and `IMPLEMENTATION_PLAN.md` (engineering authority) cite this file; neither may state a fact that is not supported here.
 
-Compiled: 13 September 2026. All sources checked against primary documents (paper PDFs/HTML, official docs, vendor engineering blogs, repository READMEs) on that date.
+Version 2.0 · 19 September 2026 · supersedes v1.0 (13 September 2026).
 
 ---
 
-## 0. How to read this document
+## 0. How to use this document
 
-### 0.1 Claim discipline
+### 0.1 Claim labels
 
-Every substantive statement carries one of four tags. **Nothing in Crosstalk's public write-up may promote a claim to a higher tier without new evidence.**
-
-| Tag | Meaning |
+| Label | Meaning |
 |---|---|
-| **[VERIFIED]** | Directly supported by a primary source read during this review. The number/claim appears in the paper, official documentation, or vendor engineering post cited on the same line. |
-| **[INFERENCE]** | A conclusion we draw from verified evidence. Logically supported but *not* stated by any source. |
-| **[PROPOSAL]** | Something Crosstalk intends to build or do. Not a claim about the world. |
-| **[UNVERIFIED]** | An open question requiring our own experiment, or a claim found only in secondary sources (news, vendor comparison blogs) that we could not confirm against a primary source. |
+| **VERIFIED** | Supported by a primary source read for this revision (paper text, RFC, official documentation, or source code at a named branch), or by our own measurement where the source column says `[OWN]`. |
+| **REPRODUCTION** | A published result Crosstalk intends to reproduce on its own stack. Not a Crosstalk finding until our measurement exists. |
+| **PROPOSED** | Something Crosstalk will build or test. Not a claim about the world. |
+| **INFERENCE** | Our conclusion from verified evidence. Logically supported but not stated by any source. |
+| **UNVERIFIED** | Plausible but not confirmed against a primary source (secondary sources only, or not yet measured). Must not be used as a premise for an architecture decision. |
+| **REJECTED** | A claim from v1.0 or from common folklore that this review found false, overstated or unsupported. Listed in §15 so it does not creep back. |
 
-### 0.2 Reading order
+### 0.2 Source types
 
-- §1 — What the LLM-traffic attack literature has established (the state of the art we must not re-invent).
-- §2 — The adjacent cache/timing-channel literature (different threat model; matters for one of our experiments).
-- §3 — Classical encrypted-traffic analysis: 25 years of attacks, defenses, and — most importantly — *evaluation methodology*.
-- §4 — Protocol-level padding facilities that actually exist in TLS/HTTP/QUIC/DNS.
-- §5 — Industry: what vendors shipped, what confidential computing does and does not do, who sells the attack.
-- §6 — Open-source landscape with reuse verdicts.
-- §7 — The gap matrix and where Crosstalk sits.
-- §8 — Full reference list with URLs.
+`[PR]` peer-reviewed venue · `[PP]` preprint (arXiv, IACR ePrint) · `[IND]` industry deployment or vendor engineering post · `[STD]` standard (RFC, WHATWG) · `[DOC]` official documentation or source code at a named branch · `[OWN]` Crosstalk's own measurement (Day-0 probe, §11.3).
 
----
+### 0.3 How this revision was verified (2026-09-19)
 
-## 1. LLM streaming traffic side channels
+- Full texts of the nine most load-bearing LLM papers were downloaded and text-searched rather than summarised by a tool: Weiss et al., Whisper Leak, PromptEcho (USENIX '26 proceedings PDF), NetEcho, Carlini & Nasr, Wiretapping LLMs, Time Will Tell, When Speculation Spills Secrets, NetShaper.
+- Official documentation was fetched for vLLM, OpenAI, Cloudflare, Microsoft, Google Cloud, nginx, Envoy, Node.js and Python. Runtime behaviour was checked in source (CPython 3.13 `asyncio/sslproto.py`, `selectors.py`; Node v24 `crypto_tls.cc`; aiohttp and uvicorn writers; openai-python and openai-node SSE decoders).
+- A small Day-0 probe measured TLS record boundaries and timer behaviour in Python (asyncio, uvloop) and Node.js on Linux (§11.3). It is **indicative evidence, not the Day-1 gate**: it ran on a laptop inside WSL2.
 
-### 1.1 Summary table
+### 0.4 Material corrections relative to v1.0
 
-| # | Work | Venue / Year | Observer | Signal | Headline result | Code |
-|---|---|---|---|---|---|---|
-| 1 | What Was Your Prompt? (GPT_Keylogger) | USENIX Sec '24 | Passive network | Per-token TLS record sizes → token *character lengths* | Reconstructs 29% of responses; topic from 55% | MIT |
-| 2 | Whisper Leak | Microsoft, arXiv Nov 2025 | Passive network | TLS record sizes + inter-arrival times | >98% AUPRC topic detection on many of 28 models | MIT |
-| 3 | PromptEcho ("From Length to Content") | USENIX Sec '26 | Passive network | *Merged* multi-token chunk lengths | Topic for 42.5% of sessions; 25.5% responses at cos>0.9 | Not found |
-| 4 | NetEcho | arXiv Oct 2025 | Passive network | Token-count-per-chunk **and** char-length-per-chunk | ~70% conversation recovery across 7 real deployment scenarios | Not stated |
-| 5 | Remote Timing Attacks on Efficient LM Inference | Carlini & Nasr, arXiv Oct 2024 | Passive + active network | Inter-token *timing* from speculative/parallel decoding | 90%+ topic precision (open-source); 100% message distinction on Claude 3 | Not found |
-| 6 | Wiretapping LLMs | Yale, ePrint 2025/167 | Passive network | Packet size + timing under speculative decoding | 71–92% private-attribute inference (vLLM); 50–90% (ChatGPT) | Not stated |
-| 7 | Time Will Tell | U. Toronto, arXiv Dec 2024 | Passive network | *Total response time* → output token count | 75–83% translation-language ASR; 74.7% GPT-4o class leak | Not found |
-| 8 | When Speculation Spills Secrets | arXiv Nov 2024 / OpenReview | Network or co-tenant | Per-iteration accepted-token counts / packet sizes | Fingerprints 1-of-50 prompts: REST 100%, BiLD 95.2%, LADE 91.6%, EAGLE 77.6% | Not found |
-
-### 1.2 Paper-by-paper
+1. **"Nobody has measured what these defenses cost" is false.** Wiretapping LLMs measured bandwidth and time-per-token overheads for five streaming designs on a real vLLM-style service. Carlini & Nasr, When Speculation Spills Secrets, Time Will Tell, Whisper Leak and PromptEcho all report cost figures, analytically or measured (§4).
+2. **Whisper Leak's mitigation numbers already come from classifiers trained on mitigated traffic.** Defense-aware training is not new for LLM traffic. What is missing is a side-by-side static-vs-adaptive pair, deployed (not simulated) batching and injection, and latency measurements (§2.2, §4).
+3. **One write ≠ one TLS record ≠ one packet.** The v1.0 architecture assumed it. Source code and our probe show the mapping depends on the runtime and on the write API (§1.4, §11).
+4. **GKE Autopilot does allow `NET_RAW`** (via Pod securityContext) and `NET_ADMIN` (via `--workload-policies=allow-net-admin`). The real restrictions are no privileged pods (partners excepted), no `hostNetwork` and no host namespaces (§14).
+5. **PromptEcho is now verified against the proceedings PDF**, and it has a public artifact.
+6. **NetEcho's "~80% via Trace A" and "20% dummy → ~2%"** were restated without their conditions. Both are narrower than v1.0 implied (§2.4).
+7. **SSE `data:` dummy events are not ignored by OpenAI SDKs.** Only comment lines are ignored (§5.2).
+8. **Python 3.14's incremental GC was reverted in 3.14.5.** No GC advantage should be assumed from 3.14 (§11.1).
+9. The "leakage in bits" headline metric is **downgraded** to exploratory. Distribution-free MI lower bounds grow only as O(ln N) (§9.5).
 
 ---
 
-#### [1] What Was Your Prompt? A Remote Keylogging Attack on AI Assistants
+## 1. Threat mechanism
 
-- **Authors** [VERIFIED]: Roy Weiss, Daniel Ayzenshteyn, Guy Amit, Yisroel Mirsky — Ben-Gurion University of the Negev.
-- **Venue** [VERIFIED]: 33rd USENIX Security Symposium (2024), pp. 3367–3384. Preprint arXiv:2403.09751.
-- **Threat model** [VERIFIED]: "Eve" eavesdrops on encrypted traffic between user and assistant, positioned "within the LAN of Bob or somewhere in the internet infrastructure." No decryption, no endpoint access.
-- **Mechanism** [VERIFIED]: Vendors streamed **one token per SSE message**. Token character length is therefore recoverable from the encrypted record size:
-  - Independent messages: `tᵢ = |packetᵢ| − h` where `h` is fixed header overhead.
-  - Cumulative messages: `tᵢ = |mᵢ| − |mᵢ₋₁|`.
-  - Paper notes QUIC/HTTP3 overhead of 28 bytes/packet with 1200-byte max payload.
-- **Attack pipeline** [VERIFIED]: token-length sequence → heuristic sentence segmentation (split where `tᵢ=1`, i.e. punctuation; merge segments <10 tokens; list patterns like `(3,1,1)` for `":\n\n1."`) → two fine-tuned T5 models: `LLM_A` for the first segment `p(R₁|T₁)`, `LLM_B` for subsequent segments `p(Rᵢ|Tᵢ, Rᵢ₋₁)` using previous-sentence context. Vocabulary replaced by special length tokens (`_5`, `_8`, …).
-- **Data** [VERIFIED]: UltraChat (1.5M GPT-4-Turbo dialogues); 570k general inquiries used; 550k train / 10k val / 10k test. Average 12.57 sentences/response, 17.5 tokens/sentence.
-- **Metrics** [VERIFIED]: sentence-transformer cosine similarity φ; **φ > 0.5 counted as "topic captured."** Also ROUGE-1/L, edit distance.
-- **Results** [VERIFIED]:
+### 1.1 What a passive on-path observer sees
 
-  | Configuration | ASR (φ>0.5) | φ>0.9 | Exact (φ=1.0) |
-  |---|---|---|---|
-  | First segment (ideal conditions) | 54.52% | 28.91% | 16.03% |
-  | Entire response (average) | 37.96% | 5.49% | 0.34% |
-  | ChatGPT-4, real traffic | 38.21% | 15.64% | 4.57% |
-  | Microsoft Copilot, real traffic | 40.87% | 17.42% | 7.96% |
-  | Baseline (GPT-4 guessing from lengths) | ~0.07% | — | — |
-
-  Abstract-level headline is "29% of responses reconstructed, topic inferred from 55%." [INFERENCE] The abstract figures and the table figures are different slices (abstract aggregates differently from per-configuration tables); **cite the table, not the abstract, when precision matters.**
-- **Training-distribution sensitivity** [VERIFIED]: a model trained on C4 achieved 5% ASR versus 54.5% for the ChatGPT-style-trained model — the attack depends heavily on modelling the *target's writing style*.
-- **Transferability** [VERIFIED]: GPT-4-trained attacker reached 40.87% on Copilot, which the authors attribute to "consistency in their construction of responses."
-- **Vendor status at publication** [VERIFIED]: vulnerable — OpenAI (ChatGPT/API), Microsoft Copilot, Writesonic, Anthropic Claude, Notion, ClickUp, TextCortex. **Google Bard/Gemini was not vulnerable**, attributed to batching. Perplexity and Poe listed as uncertain.
-- **Defenses proposed** [VERIFIED]: random padding; token grouping (multiple tokens/message); full batch response. Explicitly framed as a usability/latency trade-off with no quantitative cost analysis.
-- **Code** [VERIFIED]: `github.com/royweiss1/GPT_Keylogger`, MIT, Python, ~66 stars. **Does not operate on PCAPs** — token sequences must be extracted externally. No capture tooling.
-
-**Why it matters to Crosstalk** [INFERENCE]: this is the canonical "size channel" result and the reason `obfuscation`/`p` padding fields exist. It is also the clearest demonstration that the *finest* granularity (one token per record) is what makes reconstruction possible — which is why the modern question is about *merged* chunks, not single tokens.
-
----
-
-#### [2] Whisper Leak: a side-channel attack on Large Language Models
-
-- **Authors** [VERIFIED]: Geoff McDonald, Jonathan Bar Or (Microsoft). arXiv:2511.03675, Nov 2025. Accompanying Microsoft Security blog, 7 Nov 2025.
-- **Threat model** [VERIFIED]: passive network adversary — ISP, government, or local network observer (explicitly "coffee shop WiFi") — who sees TLS but cannot decrypt.
-- **Task** [VERIFIED]: **binary** detection of one sensitive topic ("legality of money laundering") against background traffic.
-- **Data collection** [VERIFIED]:
-  - 100 semantically similar target prompt variants generated by LLM paraphrasing; **80 for train/val, 20 held out per trial**.
-  - 100 repetitions per variant (100×100).
-  - 11,716 negatives from the Quora Question Pairs dataset, queried once each.
-  - Space-insertion perturbations applied to every query to defeat server-side caching.
-  - Temperature 1.0. Queries shuffled and interspersed.
-  - Capture: **`tcpdump` on Ubuntu clients**; features are "application data record sizes (derived from TLS record lengths) and the inter-arrival times."
-- **Models covered** [VERIFIED] — 28 across OpenAI, Microsoft/Azure, Google, Mistral, xAI, DeepSeek, Alibaba, Anthropic, Lambda Labs, Groq, Amazon.
-- **Features/preprocessing** [VERIFIED]: zero-pad to the 95th-percentile sequence length for that model; for the BERT variant, discretise sizes and times into **50 bins each** → `[LEN_0..49]`, `[TIME_0..49]`, ≤255 tokens per feature stream; LightGBM gets flattened vectors; LSTM gets 32-dim embeddings per feature.
-- **Classifiers** [VERIFIED]: LightGBM (5,000 estimators, lr 0.02, early-stop patience 40); Bi-LSTM + attention (2×128, attn dim 64, MLP [128,64], dropout 0.3, lr 2e-4); fine-tuned DistilBERT (differential LRs 2e-4 base / 2e-2 head). **5 trials with different random seeds per model.**
-- **Results** [VERIFIED]:
-  - Median AUPRC (best feature combination): `mistral-large` 100.0%, `xai-grok-3-mini-beta` 99.9%, `groq-llama-4-maverick` 99.7%. Worst: `amazon-nova-lite-v1` 71.2%.
-  - Across all 28: **size-only average 93.3%**, **time-only average 69.7%**. *Size is the dominant channel; timing alone is materially weaker but far above chance.*
-  - At a simulated 10,000:1 noise-to-target ratio, **17 of 28 models achieved 100% precision at 5–20% recall.**
-- **Batching correlates with lower leakage** [VERIFIED]: least-vulnerable models are those already emitting many tokens per SSE event — Amazon Nova (pro 77.5%, lite 71.2%), Google Gemini (1.5-flash 83.5%, 2.5-pro 84.0%; 17.7–55.3 tokens/event), Anthropic Claude-3-Haiku (91.2%, 6.0 tokens/event) — versus a 1.0 tokens/event baseline elsewhere. The paper describes this protection as **"incomplete."**
-- **Mitigation experiments** [VERIFIED, with an important caveat]:
-
-  | Mitigation | Model | Baseline AUPRC | Mitigated | Δ |
-  |---|---|---|---|---|
-  | Random padding (real, provider-side `obfuscation`) | microsoft-gpt-4o-mini | 97.5% | 92.9% | −4.6 pp |
-  | Token batching, k=5 (simulated on traces) | openai-gpt-4o-mini | 98.2% | 94.8% | −3.4 pp |
-  | Packet injection (simulated on traces) | openai-gpt-4o-mini | 98.1% | 93.3% | −4.8 pp |
-
-  - Batching simulation method [VERIFIED]: "grouping packets into fixed-size batches of N. For each batch, the inter-packet arrival times and data lengths are **summed** to form a single, larger packet."
-  - Injection parameters [VERIFIED]: intervals sampled from `𝒩(μ_dataset/k, σ)` with `injections_per_mean=2.0`, `injection_stddev_multiplier=2.0`.
-  - Injection cost [VERIFIED]: **2–3× traffic volume**. No latency cost is reported for any mitigation.
-  - **Adaptive-attacker status** [UNVERIFIED]: the padding experiment used "new parallel data collections … capturing traffic both with and without obfuscation enabled," but the paper does not present an explicit static-attacker vs. retrained-attacker comparison. Whether the reported post-mitigation AUPRC reflects a *defense-aware* attacker is **not determinable from the text**. This ambiguity is a direct motivation for Crosstalk's core experiment.
-- **Scaling** [VERIFIED]: an extended run of 121,111 captures at 9.4:1 noise ratio; "attack effectiveness continues improving with more training data, suggesting current results may underestimate real-world risk."
-- **Vendor response** [VERIFIED, Microsoft blog]: OpenAI and Microsoft Azure added an `obfuscation` field of variable-length random text; Mistral added a `p` parameter; xAI deployed protections.
-- **Code** [VERIFIED]: `github.com/yo-yo-yo-jbo/whisper_leak`, MIT, Python 3.10+, ~82 stars, ~275 commits, drivers for 40+ services, `tcpdump`-based capture, LGBM/LSTM/BERT/CNN training scripts, benchmark harness.
-
-**Why it matters to Crosstalk** [INFERENCE]: this is the single most directly comparable prior work and the best-engineered public artifact. Three of its properties define our opportunity: (a) one topic, binary, so generalisation across topics/tasks is untested; (b) two of three mitigations are *trace transformations*, not deployed systems, so no latency/throughput cost exists in the record; (c) adaptivity is unaddressed.
-
----
-
-#### [3] From Length to Content: Token-Length Side-Channel Attacks on LLM API Merged Outputs (PromptEcho)
-
-- **Authors** [VERIFIED]: Sijia Li, Tianyu Cui, Miao Chen, Xinjie Lin, Zheyuan Gu (Zhongguancun Laboratory); Xinhao Deng (Tsinghua University); Ke Xu, Qi Li (Tsinghua University & Zhongguancun Laboratory).
-- **Venue** [VERIFIED]: USENIX Security '26.
-- **Core claim** [VERIFIED]: token aggregation does **not** eliminate the channel; it creates a *merged* token-length side channel where encrypted chunk sizes expose the character-length pattern of a token *group*. The attack performs "semantics-aware decomposition of merged token lengths" using LLM linguistic priors and chain-of-thought to resolve uncertain token boundaries.
-- **Results** [VERIFIED]: on real API traffic from OpenAI GPT-4o and DeepSeek-V3 — **topic correctly inferred for 42.5% of sessions**; **25.5% of responses reconstructed at cosine similarity > 0.9**.
-- **Artifacts** [UNVERIFIED]: no public code located; the USENIX PDF endpoint returned HTTP 403 to automated fetching, so all figures above come from the USENIX abstract page and indexed abstract text rather than the full PDF. **Re-verify against the PDF before citing in a report.**
-
-**Why it matters** [INFERENCE]: this is the direct refutation of "just batch tokens and you're fine." Any batching defense Crosstalk implements must be evaluated against an attacker that models merged lengths, not one that assumes one token per chunk.
-
----
-
-#### [4] NetEcho: From Real-World Streaming Side-Channels to Full LLM Conversation Recovery
-
-- **Authors** [VERIFIED]: Zheng Zhang, Guanlong Wu, Sen Deng, Shuai Wang, Yinqian Zhang — Southern University of Science and Technology; Hong Kong University of Science and Technology. arXiv:2510.25472, Oct 2025.
-- **Most valuable contribution for us** [VERIFIED]: a taxonomy of **seven real deployment scenarios** and what defense each does or does not inherit:
-
-  | Scenario | Backend | Defense present | Example |
-  |---|---|---|---|
-  | A | Open-source w/ multi-token prediction | None | DeepSeek web chatbot |
-  | B | OpenAI-style API | Passive batching 1–3 tokens | DeepSeek-v3 API |
-  | C | Proprietary vendor chatbot | Active: batching + padding to K bytes | Vendor chat UIs |
-  | D | OpenAI-style API | Passive batching ~2 tokens | GPT/Gemini APIs |
-  | E | Self-hosted app over upstream API | Active upstream only — **no downstream coverage** | Glass.health, Harvey AI |
-  | F | Third-party proxy with padding | Upstream padding only | Cloudflare LLM app |
-  | G | vLLM/SGLang w/ speculative decoding | Passive, dynamic token counts | FastChat, Vercel AI |
-
-- **Two-trace decomposition** [VERIFIED]: **Trace A** = token count per packet group (from arrival intervals and size multiples); **Trace B** = character length per token group (packet size minus fixed metadata, ~102–264 bytes depending on context). Padding attacks Trace B; **Trace A survives**.
-- **Quantified defense failure** [VERIFIED]: with simulated padding, traces "still leak ~80%+ via Trace A." **20% dummy-packet injection produced only ~2% accuracy reduction.**
-- **The deployment-gap finding** [VERIFIED]: "Scenario E & G show upstream defenses ineffective for downstream frontends (e.g., Next.js cannot inherit OpenAI padding)." Also: "Only giant vendors implement padding" because of protocol-modification cost.
-- **Attack pipeline** [VERIFIED]: offline probing (~5K–10K queries) to build ⟨trace, text⟩ pairs → dual-tower contrastive retrieval (MiniLM text tower + LSTM trace tower, InfoNCE) → reconstruction by a local open LLM (DeepSeek-v2-lite / Qwen3-32B) with **logits processing constrained to match observed token/group lengths** → prompt recovery by a remote reasoning LLM → up to 3 rounds of iterative refinement by re-probing with recovered candidates.
-- **Results** [VERIFIED]: medical 65% response recovery (NED) / 80% prompt recovery; legal 80% / 55%; topic classification Top-1 **73.3%–98.2%** across scenarios A–G; attack success (≥50% similarity) averaging 95%.
-- **Economics** [VERIFIED]: **$55 total to attack 1,200 victims** ($40 probing + ~$5 refinement + GPU time).
-- **Robustness** [VERIFIED]: tested to 10% packet loss/reordering — topic recovery stays >80%, full recovery degrades. Cross-tokenizer transfer costs ~10%. Out-of-distribution recovery ~50% of in-distribution.
-- **Code** [VERIFIED]: not mentioned in the paper.
-
-**Why it matters** [INFERENCE]: NetEcho establishes (i) that timing-derived token *counts* are an independent channel that padding does not touch, and (ii) that **the defense must live at the last hop to the user**, not upstream. Both are load-bearing for Crosstalk's architecture: our shaper sits at the edge the client actually talks to, and our defense catalogue must attack Trace A (timing/counts) as well as Trace B (sizes).
-
----
-
-#### [5] Remote Timing Attacks on Efficient Language Model Inference
-
-- **Authors** [VERIFIED]: Nicholas Carlini, Milad Nasr. arXiv:2410.17175, Oct 2024.
-- **Insight** [VERIFIED]: efficiency techniques (speculative sampling, parallel/lookahead decoding, Medusa, SpecInfer, Speculative Streaming, consistency LLMs) make generation time **data-dependent** — acceptance rate rises with predictable text — so inter-token delays leak content.
-- **Threat models** [VERIFIED]: passive (observe inter-packet delays on HTTPS) and **active** (adversary controls part of the prompt — a chosen-plaintext analogue).
-- **Measurement detail that matters** [VERIFIED]: **Claude 3 clusters multiple tokens per TCP packet**, so the authors had to use packet-*size* analysis to infer token counts before computing inter-token delays. Size and timing are not separable channels in practice.
-- **Methods** [VERIFIED]: Gaussian Mixture Models fit on 100 queries/condition; CNNs for the web-UI setting (~79–82% topic accuracy).
-- **Results** [VERIFIED]:
-  - Open-source passive: **89.5%–99.8%** distinguishing medical vs. coding topics.
-  - GPT-3.5: 94.7% accuracy distinguishing easy vs. hard queries. GPT-4-turbo "twice as fast" on easy queries.
-  - **Claude 3: 100%** accuracy after compensating for token clustering.
-  - ChatGPT language identification: **49% top-1 across 10 languages** (German, Russian, Chinese leak most).
-  - Active 1-of-1000: perfect classification using 100 adversary-controlled suffixes.
-  - Secret extraction: 97.2% / 99.3% success eliciting capability gaps, enabling partial recovery of secrets such as phone numbers.
-- **Defense evaluated** [VERIFIED]: **constant output rate.** Transmitting every 80 ms added **4–13 ms latency per token with <10% bandwidth overhead**. Protocol morphing was discussed and rejected as impractical. The authors note defenses are more viable here than in classical traffic analysis because required timing precision is high and inter-response variance is modest.
-- **Stability** [VERIFIED]: timing signatures degrade over weeks for GPT models; Claude remained stable.
-
-**Why it matters** [INFERENCE]: this is the strongest existing evidence that a *timing-only* defense (constant rate) is both necessary and surprisingly cheap in bandwidth. It gives Crosstalk a concrete, citable baseline configuration (80 ms constant rate) to reproduce and to place on our cost frontier.
-
----
-
-#### [6] Wiretapping LLMs: Network Side-Channel Attacks on Interactive LLM Services
-
-- **Authors** [VERIFIED]: Mahdi Soleimani, Grace Jia, In Gim, Seung-seob Lee, Anurag Khandelwal — Yale University. IACR ePrint 2025/167, Feb 2025.
-- **Claim** [VERIFIED]: server-side optimizations including speculative decoding introduce input-dependent packet timing/size variations; network adversaries learn sensitive content from encrypted prompts and responses.
-- **Results** [VERIFIED]: **71–92%** accuracy predicting private attributes on vLLM; **50–90%** on ChatGPT. Application domains: medicine and finance.
-- **Defenses** [VERIFIED]: stated to exist with security/performance trade-offs (interactivity, bandwidth); no quantitative frontier given.
-- **Code** [UNVERIFIED]: not mentioned.
-
----
-
-#### [7] Time Will Tell: Timing Side Channels via Output Token Count in LLMs
-
-- **Authors** [VERIFIED]: Tianchen Zhang, Gururaj Saileshwar, David Lie — University of Toronto. arXiv:2412.15431, Dec 2024.
-- **Mechanism** [VERIFIED]: autoregressive decoding makes time-per-output-token roughly constant, so **total response time ⇒ output token count**. Pearson r > 0.987 for locally served models (Tower, M2M100, MBart50, Gemma2); **r = 0.370 for GPT-4o** due to server-side variation and network congestion, requiring multi-day profiling and concurrent TTFT/TPOT sampling to compensate.
-- **Serving setup** [VERIFIED]: translation models on AWS `g6.xlarge` (Oregon); classification models locally on RTX A6000; GPT-4o via API.
-- **Results** [VERIFIED]: translation-language ASR — Tower 82.5% local / 83.2% remote-timing, M2M100 77.3% / 75.8%, MBart50 80.6% / 81.3%. Classification — GPT-4o 86.9% local, **74.7% remote timing**; Gemma2-9B 81.4–82.9%.
-- **Mitigations with costs** [VERIFIED]: prompt-level fixed-length output — GPT-4o ASR dropped 26% (to 61.9%) but Gemma2 negligible. System-level padding to maximum length — **Tower +93% latency**, M2M100/MBart50 +13% average; plaintext padding requirement 67%–108%.
-- **Limitations acknowledged** [VERIFIED]: assumes batch size 1; continuous batching adds noise; speculative decoding may break the linear relation.
-
-**Why it matters** [INFERENCE]: this paper's own stated limitation — batch size 1, no continuous batching — is precisely one of Crosstalk's research questions. The fact that a top-venue result explicitly brackets production serving conditions is strong evidence the gap is real and recognised.
-
----
-
-#### [8] When Speculation Spills Secrets: Side Channels via Speculative Decoding in LLMs
-
-- **Authors** [VERIFIED]: Jiankun Wei, Abdulrahman Abdulrazzag, Tianchen Zhang, Adel Muursepp, Gururaj Saileshwar. arXiv:2411.01076; OpenReview.
-- **Mechanism** [VERIFIED]: input-dependent patterns of correct/incorrect speculation are inferable "by monitoring per-iteration token counts **or packet sizes**."
-- **Results** [VERIFIED], 1-of-50 prompt fingerprinting on research prototypes and production-grade vLLM, temperature 0.3: REST 100%, LADE 91.6%, BiLD 95.2%, EAGLE 77.6%. At temperature 1.0: REST 99.6%, LADE 61.2%, BiLD 63.6%, EAGLE 24% (random baseline 2%). Confidential datastore contents leaked at >25 tokens/sec.
-- **Mitigations proposed** [VERIFIED]: packet padding and **iteration-wise token aggregation**.
-
----
-
-### 1.3 Adjacent: agent traffic
-
-**Network-Level Prompt and Trait Leakage in Local Research Agents** [VERIFIED] — Hyejun Jeong, Mohammadreza Teymoorianfard, Abhinav Kumar, Amir Houmansadr, Eugene Bagdasarian (UMass). arXiv:2508.20282, Aug 2025, revised Jan 2026.
-- Threat model: passive observers including DNS resolvers, ISPs, VPNs, proxies, firewalls.
-- Agents visit **70–140 domains per request**; from visited IPs, domain sequences and request timing the attack recovers **73% of the prompt's functional and domain knowledge** and up to **19 of 32 latent user traits** across sessions.
-- Mitigation (constraining domain diversity / obfuscating traces) reduces effectiveness by an average of 29%.
-- Code: `umass-aisec/wra` [VERIFIED].
-
-[INFERENCE] Agentic traffic is a *richer* channel than chat streaming because DNS/SNI/destination sets are visible in plaintext. Crosstalk deliberately excludes it from the core (different capture surface, different defenses) but it is the single strongest future extension.
-
----
-
-## 2. Adjacent literature: cache and timing channels with an API-client adversary
-
-**Threat model differs.** In §1 the adversary is a *passive observer of someone else's connection*. In this section the adversary is a *legitimate API client* who measures their own request latency to learn about other tenants. Crosstalk's threat model is §1. This section matters for exactly one reason, stated at the end.
-
-| Work | Venue | Mechanism | Key result |
+| # | Fact | Label | Source |
 |---|---|---|---|
-| **InputSnatch** (Xinyao Zheng et al., arXiv:2411.18191) | Nov 2024 | Prefix-cache and semantic-cache hit/miss timing; Input Constructor + Time Analyzer | Up to **62%** success stealing medical data; up to **100%** identifying legal topics [VERIFIED] |
-| **The Early Bird Catches the Leak** (Linke Song, Zixuan Pang, Wenhao Wang, Zihao Wang, XiaoFeng Wang, Hongbo Chen, Wei Song, Yier Jin, Dan Meng, Rui Hou) | arXiv:2409.20002, accepted IEEE TIFS | KV-cache and semantic-cache timing; classification models to detect cache hits | Recovers system prompts and shared prefixes; black-box validated on deployed services [VERIFIED] |
-| **I Know What You Asked / PromptPeek** (Guanlong Wu, Zheng Zhang, Yao Zhang, Weili Wang, Jianyu Niu, Ye Wu, Yinqian Zhang — SUSTech + ByteDance) | NDSS 2025 | Probing SGLang's radix-tree KV cache; TTFT fingerprint correlation | **99–100% ASR** reconstructing prompts token-by-token [VERIFIED] |
-| **Auditing Prompt Caching in Language Model APIs** (Chenchen Gu, Xiang Lisa Li, Rohith Kuditipudi, Percy Liang, Tatsunori Hashimoto — Stanford) | ICML 2025 | Statistical hypothesis tests on TTFT | **Global cache sharing across users in 7 API providers including OpenAI**; also revealed OpenAI's embedding model is decoder-only [VERIFIED] |
-| **SafeKV** (Kexin Chu et al., arXiv:2508.08438) | Aug 2025 / rev. Feb 2026 | Selective KV-cache sharing with sensitivity-aware eviction | Cuts TTFT overhead vs. full isolation by up to 40.58%; up to 2.66× throughput [VERIFIED] |
-| **PrefixWall** (Panagiotis Georgios Pennas, Konstantinos Papaioannou, Marco Guarnieri, Thaleia Dimitra Doudali, arXiv:2603.10726) | Mar 2026 | Monitors cross-user reuse, selectively isolates prefixes | Up to 70% higher cache reuse, 30% lower latency than full isolation [VERIFIED] |
-| **MoEcho** (Ruyi Ding, Tianhong Xu, Xinyi Shen, Aidong Adam Ding, Yunsi Fei) | CCS 2025 | **Microarchitectural**: cache occupancy, Pageout+Reload, GPU perf counters, TLB Evict+Reload | Out of scope — requires local co-location, not network observation [VERIFIED] |
+| M1 | A TLS 1.3 record carries a 5-byte cleartext header: outer content type (always `application_data`=23 once keys are established), legacy version `0x0303`, and a 2-byte length. | VERIFIED | [STD] RFC 8446 §5.1–5.2 [R68] |
+| M2 | For AEAD suites, ciphertext length = plaintext length + 1 (inner content type) + padding + 16 (tag). A record never carries more than 2^14 plaintext bytes. | VERIFIED | [STD] RFC 8446 §5.2, §5.4 [R68]; [OWN] 16,384-byte plaintext records observed as 16,401-byte records (§11.3) |
+| M3 | TLS 1.3 permits record padding, but none of the runtimes allowed for Crosstalk exposes a per-record padding API: Python `ssl`, Node `tls`, or Java JSSE. | INFERENCE (no such API found in their documentation) | [DOC] Python `ssl` docs [R74]; Node `tls`/`http2` docs [R78] |
+| M4 | On TCP, a passive observer with full packet capture can reassemble each direction's byte stream and parse record headers. This yields the record sequence (length, direction, time), including records spanning or sharing segments. | VERIFIED (method used in published attacks) | [PR] PromptEcho App. A [R3]; [PP] Whisper Leak §3.1 ("application data record sizes (derived from TLS record lengths)") [R2] |
+| M5 | Over QUIC (HTTP/3), frames are encrypted inside packet protection. The observer sees UDP datagram sizes and timing but no record layer. | VERIFIED | [STD] RFC 9000, RFC 9001, RFC 9114 [R71] |
+| M6 | Connection metadata (IPs, ports, SNI unless ECH is used, ALPN, handshake shape) is visible in addition to record lengths and times. | VERIFIED | [STD] RFC 8446 [R68] |
 
-**The one reason this matters to Crosstalk** [INFERENCE + PROPOSAL]: automatic prefix caching is **on by default in vLLM's V1 engine** [VERIFIED, vLLM docs], and a cache hit shortens TTFT by a large margin (vLLM documentation and community reporting describe 60–80% TTFT reductions for long shared system prompts [UNVERIFIED — secondary source]). TTFT is directly observable on the wire as the gap between request completion and first response record. The cache literature measures this from the *API client's* seat; nobody has measured whether it survives to a *passive network observer* behind a load balancer under concurrent load. That is a cheap, well-posed, genuinely open experiment for Crosstalk (see PRODUCT.md §13, experiment E4).
+### 1.2 Why LLM streaming creates the channel
 
----
-
-## 3. Classical encrypted-traffic analysis (1996–2026)
-
-This is the field Crosstalk borrows its *methodology* from. The LLM papers are 2 years old; this literature is 25 years old and has already made — and corrected — most of the mistakes available.
-
-### 3.1 Foundational leaks: the same physics, older protocols
-
-| Work | Venue | Result |
-|---|---|---|
-| **Timing Analysis of Keystrokes and Timing Attacks on SSH** — Dawn Song, David Wagner, Xuqing Tian | USENIX Security 2001 | SSH interactive mode sends **each keystroke in its own packet**, leaking inter-keystroke timing; block ciphers pad only to 8-byte boundaries, revealing approximate data size [VERIFIED] |
-| **Side-Channel Leaks in Web Applications** — Shuo Chen, Rui Wang, XiaoFeng Wang, Kehuan Zhang | IEEE S&P 2010 | Over HTTPS, inferred illnesses, medications, surgeries, family income, investment activity; search autocomplete grows the request by **one byte per keystroke** [VERIFIED] |
-| **Spot Me if You Can** — Charles Wright, Lucas Ballard, Scott Coull, Gerald Masson, Fabian Monrose | IEEE S&P 2008 | Variable-bitrate codecs leak phonetic content; phrase spotting at **50% average accuracy, >90% for some phrases** [VERIFIED] |
-| **Beauty and the Burst** — Roei Schuster, Vitaly Shmatikov, Eran Tromer | USENIX Security 2017 | MPEG-DASH segmentation creates content-dependent **bursts**; CNNs identify streams; feasible even for a JavaScript ad on a nearby machine [VERIFIED] |
-
-[INFERENCE] The LLM token-length channel is structurally identical to the SSH keystroke channel and the VBR-codec channel: a **variable-size, content-dependent unit emitted in its own transport unit, in real time**. Every defense idea that worked or failed there transfers.
-
-### 3.2 Website fingerprinting attacks — the attack ladder
-
-| Attack | Venue | Representation | Headline |
+| # | Fact | Label | Source |
 |---|---|---|---|
-| **CUMUL** — Panchenko et al. | NDSS 2016 | Cumulative sum of ±packet lengths, interpolated to 100 points + 4 totals = **104 features**, RBF-SVM | 90–93% on 100 sites [VERIFIED] |
-| **k-fingerprinting (k-FP)** — Jamie Hayes, George Danezis | USENIX Security 2016 | **175 features** incl. packets-per-second timing; random forest used as an *embedding* (leaf encoding) feeding k-NN | **85% TPR at 0.02% FPR** against 30 monitored hidden services in a 100,000-page open world [VERIFIED] |
-| **Deep Fingerprinting (DF)** — Sirinam, Imani, Juarez, Wright | CCS 2018 | 1-D CNN over direction sequence | **>98%** undefended; **>90% against WTF-PAD**; 49.7% against Walkie-Talkie [VERIFIED] |
-| **Robust Fingerprinting (RF)** — Meng Shen, Kexin Ji, Zhenbo Gao, Qi Li, Liehuang Zhu, Ke Xu | USENIX Security 2023 | Traffic Aggregation Matrix (TAM) representation | Subverts existing defenses [VERIFIED] |
+| M7 | Autoregressive generation plus SSE streaming makes each emitted chunk small, content-dependent and timed by the decoder. With vLLM's default `--stream-interval 1`, each chunk carries one token. | VERIFIED | [DOC] vLLM serve CLI: `--stream-interval` default `1` [R62] |
+| M8 | An OpenAI-compatible chunk is a JSON object whose size is a near-constant envelope plus the token text (after JSON escaping). Our probe events carried 176–185 plaintext bytes for 1–10-character tokens. | VERIFIED | [PR] Weiss et al. [R1]; [OWN] §11.3 |
+| M9 | Three observable channels result. **Size:** per-record length reveals token or token-group character length. **Timing:** inter-arrival, time to first response record, total duration. **Count:** the number of records reveals the number of tokens or groups. | VERIFIED | [PR] Weiss [R1]; [PP] Whisper Leak (size-only avg AUPRC 93.3% vs time-only 69.7% across 28 models) [R2]; [PP] NetEcho Trace A (counts) / Trace B (lengths) [R4]; [PP] Carlini & Nasr (timing) [R5]; [PP] Time Will Tell (count via total time) [R7] |
+| M10 | Multi-token aggregation does not remove the size channel; it turns it into a merged-length channel. | VERIFIED | [PR] PromptEcho: topic for 42.5% of sessions, 25.5% of responses at cosine > 0.9 on GPT-4o and DeepSeek-V3 [R3] |
 
-**Design lesson for Crosstalk** [INFERENCE]: the two representations that have survived a decade are (a) the **cumulative signed-size curve** (CUMUL) and (b) the **raw direction/size sequence into a 1-D CNN** (DF). Both are trivially applicable to SSE chunk streams. A gradient-boosted model over k-FP-style summary statistics is the right cheap baseline. This is why Crosstalk's attack ladder is LR → GBDT(CUMUL+k-FP features) → 1-D CNN, and why a Transformer is unnecessary until the CNN saturates.
+### 1.3 The observation stack Crosstalk must model (corrected)
 
-### 3.3 Defenses — and what they actually cost
+v1.0 assumed `SSE event → one write() → one TLS record → one TCP segment → one packet`. That assumption is **REJECTED**. The following facts replace it.
 
-| Defense | Venue | Mechanism | Measured overhead | Outcome |
-|---|---|---|---|---|
-| **Traffic Morphing** — Wright, Coull, Monrose | NDSS 2009 | Convex optimization to morph one traffic class into another | Lower than padding | **Broken**: Dyer et al. got 98% with *total bytes alone* [VERIFIED] |
-| **BuFLO** — Dyer, Coull, Ristenpart, Shrimpton | IEEE S&P 2012 | Fixed-size packets at fixed intervals | **>400% bandwidth** to push accuracy to 5% | 27% attack accuracy at k=128 [VERIFIED] |
-| **Tamaraw** — Cai, Nithyanand, Wang, Johnson, Goldberg | CCS 2014 | Constant rate per direction, pad to multiple of L | **142% data, 30% time** (measured) | Provable-ish baseline, impractical [VERIFIED] |
-| **WTF-PAD** — Juarez, Imani, Perry, Diaz, Wright | ESORICS 2016 | Adaptive padding, histogram-driven, fills gaps | **0 latency, <60% bandwidth** | 91%→20% vs. 2016 attacks; **then broken to >90% by DF** [VERIFIED] |
-| **Walkie-Talkie** — Tao Wang, Ian Goldberg | USENIX Security 2017 | Half-duplex browsing + burst molding so sensitive/non-sensitive pages look alike | **31% bandwidth, 34% time** | Held DF to 49.7% [VERIFIED] |
-| **FRONT / GLUE** — Jiajun Gong, Tao Wang | USENIX Security 2020 | Zero-delay random dummy padding concentrated at trace front; GLUE merges traces | FRONT **33% data, zero latency**; GLUE 22–44% | FRONT beats WTF-PAD at similar cost [VERIFIED] |
-| **RegulaTor** — James K. Holland, Nicholas Hopper | PETS 2022 | Regularised decaying send-rate surges | — | Exploits common web-traffic shape [VERIFIED] |
-| **Surakav** — Gong et al. | IEEE S&P 2022 | GAN-generated realistic send patterns regulating buffered data | **55% data, 16% time** | TPR −57%; 42% less data than FRONT [VERIFIED] |
-| **Palette** — Shen et al. | IEEE S&P 2024 | Cluster similar sites, regularise each cluster to a common pattern | — | Attack accuracy **−73.6%** avg; +33.5–43.5 pp over prior defenses; deployed as a Tor Pluggable Transport [VERIFIED] |
-| **DeTorrent** — Holland, Carpenter, Oh, Hopper | PETS 2024 | Two competing neural networks generate padding-only defenses | Padding-only, no delay | Accuracy −61.5%; FC TPR at 1e-5 FPR ≈ 0.12; **deployed live alongside Tor** [VERIFIED] |
-| **ALPaCA / LLaMA** — Cherubin, Hayes, Juarez | PETS 2017 | **Server-side application-layer padding** of page objects; LLaMA is the client-side counterpart | D-ALPaCA needs **23.6× less bandwidth** than P-ALPaCA | Attack accuracy to **10%** [VERIFIED] |
-| **Maybenot** — Tobias Pulls, Ethan Witwer | WPES 2023 | Framework: defenses as probabilistic state machines scheduling padding/blocking | — | Descends from Tor's circuit padding framework ← WTF-PAD ← Adaptive Padding; **shipped in Mullvad DAITA** [VERIFIED] |
-| **Pacer** — Aastha Mehta, Mohamed Alzayat, Roberta de Viti, Björn Brandenburg, Peter Druschel, Deepak Garg | arXiv 1908.11568 | **Hypervisor-level** traffic shaping in IaaS clouds, respecting flow control and congestion signals | "moderate" | First end-to-end cloud NSC elimination [VERIFIED] |
-
-**Two structural lessons** [INFERENCE]:
-1. **Every lightweight defense in this table was eventually broken by a stronger attacker trained against it.** WTF-PAD is the canonical case: 20% accuracy in 2016, >90% in 2018 against the same defense, because DF was trained on defended traces. *A defense evaluated only against a pre-existing attacker is not evaluated.*
-2. **Server-side application-layer padding (ALPaCA) is the closest classical analogue to what an LLM provider can actually deploy** — and its key result was that a *distribution-aware* padding target (D-ALPaCA) is 23.6× cheaper in bandwidth than naive padding (P-ALPaCA) for the same protection. That is directly portable to token-chunk padding and is the intellectual ancestor of Crosstalk's bucket-padding policy.
-
-### 3.4 Evaluation methodology — the part most student projects skip
-
-| Work | Venue | What it establishes |
-|---|---|---|
-| **A Critical Evaluation of Website Fingerprinting Attacks** — Juarez, Afroz, Acar, Diaz, Greenstadt | CCS 2014 | Prior results rested on unrealistic assumptions; browsing habits, location and client version materially change accuracy; prior work **succumbs to the base-rate fallacy** in open-world settings [VERIFIED] |
-| **Bayes, not Naïve** — Giovanni Cherubin | PETS 2017 | A practical method to derive **security bounds for any defense** by estimating the Bayes error for a chosen feature set — a lower bound on error for *any* classifier the adversary may use [VERIFIED] |
-| **Measuring Information Leakage in WF Attacks and Defenses (WeFDE)** — Li, Guo, Hopper | CCS 2018 | Mutual information between site and fingerprint, via adaptive kernel density estimation, over 3,043 features — **leakage expressed in bits** rather than one classifier's accuracy [VERIFIED] |
-| **DeepSE-WF** — Alexander Veicht, Cedric Renggli, Diogo Barradas | arXiv:2203.04428 | kNN-based Bayes-error and mutual-information estimation **from learned latent features**, giving tighter estimates than hand-crafted-feature frameworks at an order of magnitude less compute [VERIFIED] |
-| **Online Website Fingerprinting** — Giovanni Cherubin, Rob Jansen, Carmela Troncoso | USENIX Security 2022 | First evaluation on **genuine** Tor traffic in a true open world; Distinguished Paper; Internet Defense Prize 2nd [VERIFIED] |
-| **Dos and Don'ts of Machine Learning in Computer Security** — Arp, Quiring, Pendlebury, Warnecke, Pierazzi, Wressnegger, Cavallaro, Rieck | USENIX Security 2022 | Catalogue of pitfalls (sampling bias, data snooping, spurious correlations, inappropriate baselines/metrics, base-rate neglect) found in 30 top-venue papers; actionable recommendations [VERIFIED] |
-
-**Direct consequence for Crosstalk** [PROPOSAL]: we adopt (a) prompt-family-disjoint and time-disjoint splits as the default, not an option; (b) balanced accuracy + PR-AUC + precision-at-fixed-recall with bootstrap CIs over ≥5 seeds; (c) a Bayes-error/MI leakage estimate (DeepSE-WF-style kNN estimator) reported *alongside* classifier accuracy so that "our attacker was weak" is not a valid criticism of a defense claim; (d) an explicit label-shuffled null run as a contamination canary.
-
-### 3.5 Simulation versus implementation — the finding that defines our engineering
-
-| Work | Venue | Finding |
-|---|---|---|
-| **WFDefProxy** — Jiajun Gong, Wuqi Zhang, Charles Zhang, Tao Wang | arXiv:2111.12629 | Implemented FRONT, Tamaraw and Random-WT as real Tor pluggable transports. Simulation captured *effectiveness* correctly but **overhead badly**: FRONT ~23% **higher** data overhead than simulated; Tamaraw 28–45% **lower**; Tamaraw time overhead **21% measured vs. 51–242% previously simulated**. Causes: packet-delay assumptions, queuing, page-load stop conditions [VERIFIED] |
-| **Padding-only defenses add delay in Tor** — Ethan Witwer, James Holland, Nicholas Hopper | arXiv:2208.02917, WPES | Padding-only defenses are widely assumed "zero-delay." Shadow simulations show that **network-wide deployment lengthens queues and adds delay**. Defenses should be evaluated with network-wide deployment simulations [VERIFIED] |
-| **Rethinking the Role of Network Stacks for WF Defenses** — Elisaveta Lavrentieva, Marc Juarez, Michio Honda | HotNets 2025 | Defenses are designed over the packet sequence the attacker sees but **implemented at the application layer**, operating on data that has not yet traversed the network stack. Advocates integrating packet-sequence obfuscation into host network stacks [VERIFIED] |
-| **State Machine Frameworks for WF Defenses: Maybe Not** — Ethan Witwer | arXiv:2310.10789 | Implemented three SOTA defenses in Maybenot; demonstrates the potential of state-machine frameworks but raises doubt about long-term feasibility; recommends enhancements before Arti commits to one [VERIFIED] |
-
-**This is the single most important methodological import into Crosstalk** [INFERENCE]. Whisper Leak simulated batching by *summing packet sizes and inter-arrival times on captured traces*. WFDefProxy proves that this class of simulation gets overhead wrong by factors of 2–10× and misses queuing entirely. HotNets'25 proves that an application-layer defense does not control what the attacker actually observes, because the network stack re-frames it. Therefore: **Crosstalk implements defenses in a real proxy, in the path, and measures the result on the wire.** That is not gold-plating; it is the correction the literature explicitly asks for.
-
-### 3.6 Encrypted DNS: proof that naive padding underdelivers
-
-**Encrypted DNS ⇒ Privacy? A Traffic Analysis Perspective** — Sandra Siby, Marc Juarez, Claudia Diaz, Narseo Vallina-Rodriguez, Carmela Troncoso, NDSS 2020 [VERIFIED]. EDNS(0) padding "is not as effective as expected"; even with the recommended padding level, domain classification retains **F1 ≈ 0.45 — six orders of magnitude better than random guessing** — using 124× less data than HTTPS-flow attacks.
-
-[INFERENCE] The precedent is exact: a standards-body-blessed padding policy, deployed, still leaves an attack far above chance. It is the strongest historical reason to doubt that `obfuscation`-style random padding is sufficient for LLM streams.
-
-### 3.7 Padding theory
-
-**Optimally Hiding Object Sizes with Constrained Padding** — Andrew C. Reed, Michael K. Reiter, arXiv:2108.01753 [VERIFIED]. Gives algorithms for **privacy-optimal padding schemes that minimise the observer's information gain from the padded size**, subject to a bounded padding-overhead constraint, in three regimes: per-object padding (same padded copy each time), per-request padding (re-padded per request), and the case where the object store has no known query distribution.
-
-[INFERENCE] This is the formal foundation for Crosstalk's `pad-bucket` policy and for the claim that bucket selection should be *distribution-aware*, not uniform-random. It also supplies the right framing for the budget controller: minimise information gain subject to an overhead constraint.
-
----
-
-## 4. Protocol-level padding: what actually exists
-
-| Layer | Facility | Status |
-|---|---|---|
-| **TLS 1.3** | Record padding — arbitrary zero padding inside the encrypted record (RFC 8446 §5.4) | Exists. In OpenSSL: `SSL_CTX_set_block_padding()` / `SSL_set_block_padding()` pad records to a multiple of `block_size`; `SSL_CTX_set_record_padding_callback()` gives per-record control. **TLS 1.3 write path only**, and **incompatible with Kernel TLS** [VERIFIED, OpenSSL docs] |
-| **TLS (Rust)** | rustls record padding | **[UNVERIFIED]** — no documentation of a record-padding API was found. Assume unavailable; verify before designing around it |
-| **HTTP/2** | `DATA` frame `PADDED` flag (RFC 9113 §6.1) | Exists in the protocol; server-library exposure varies [UNVERIFIED for specific Rust/Go stacks] |
-| **QUIC** | `PADDING` frames (RFC 9000 §19.1) | Exists |
-| **DNS** | EDNS(0) Padding with a recommended policy (RFC 8467): clients pad queries to a multiple of **128 octets**, servers pad responses to a multiple of **468 octets**; 468 chosen so three blocks fit a typical MTU. A Random-Block-Length variant is also described [VERIFIED] |
-| **Go TLS stack** | **Dynamic record sizing**: `crypto/tls` sends small records (bounded by `tcpMSSEstimate` = 1280 − 40 − 32 bytes) until ~1 MB has been written on the connection, then boosts to maximum record size; disable with `DynamicRecordSizingDisabled` [VERIFIED] |
-
-**Two engineering consequences** [INFERENCE]:
-1. Application-layer padding (a JSON field like `obfuscation` / `p`) is what every vendor actually shipped, because it requires no TLS-stack change and survives any intermediary. Crosstalk's primary padding policies must therefore be application-layer to be *comparable to industry*. TLS record padding is a legitimate secondary arm (OpenSSL-backed) that tests whether pushing the defense down a layer buys anything.
-2. **Go's dynamic record sizing is a confound**, not a defense: a Go-implemented gateway would silently change observed record sizes as a function of *bytes written so far on the connection*, which correlates with response length. Any experiment run through a Go TLS server must either disable it or report it. This is a concrete, verified reason to prefer Rust for the shaper and to document the TLS write path precisely.
-
----
-
-## 5. Industry and startup landscape
-
-### 5.1 What vendors actually shipped against this attack
-
-| Vendor | Mitigation | Detail | Status |
+| Layer boundary | What actually happens | Label | Source |
 |---|---|---|---|
-| **Cloudflare** (Workers AI, AI Gateway) | Application-layer random padding | Added a `"p"` property of **variable random length** to each SSE JSON object, e.g. `data: {"response":"portugal","p":"abcdefghijklmnopqrstuvwxyz0123456789a"}`. Automatic, no customer action. Response to a Ben-Gurion bug-bounty report, March 2024 | [VERIFIED, Cloudflare blog] |
-| **OpenAI** | `obfuscation` field | Official API reference: *"An obfuscation string added to normalize the size of streamed chunks as a mitigation to certain side-channel attacks. The field is included by default and omitted when `stream_options.include_obfuscation` is `false`."* Deployed August 2025 per Whisper Leak | [VERIFIED, OpenAI docs] |
-| **Microsoft Azure** | `obfuscation` field | Same mechanism | [VERIFIED, Microsoft blog] |
-| **Mistral** | `p` parameter | Equivalent effect | [VERIFIED, Microsoft blog] |
-| **xAI** | Unspecified protections | Deployed | [VERIFIED, Microsoft blog] |
-| **Google (Gemini), Amazon (Nova), Anthropic (Claude)** | **Token batching as a side effect**, not an announced defense | Whisper Leak measured 17.7–55.3 tokens/event (Gemini), 6.0 (Claude-3-Haiku) vs. 1.0 baseline, and correspondingly lower AUPRC | [VERIFIED, Whisper Leak] |
-| **Anyone else** | Nothing found | NetEcho: "Only giant vendors implement padding" | [VERIFIED] |
+| Application intent → socket write | HTTP libraries decide how many writes one "event" becomes. aiohttp sends chunk framing through `writelines()` once the payload reaches `MIN_PAYLOAD_FOR_WRITELINES = 2048` bytes. uvicorn joins framing and body into one `write()`. | VERIFIED | [DOC] aiohttp `http_writer.py` [R76]; uvicorn `httptools_impl.py` [R77] |
+| Socket write → TLS record (Python) | `asyncio` SSL transport: each buffer handed to `write()`/`writelines()` becomes its own `SSL_write` call, hence its own record(s). `writelines([a,b,c])` produces three records. | VERIFIED | [DOC] CPython 3.13 `sslproto.py` `_write_appdata`/`_do_write` [R74]; [OWN] 150 records for 50 events via `writelines` (§11.3) |
+| Socket write → TLS record (Node) | `TLSWrap::DoWrite` concatenates all buffers of one `writev` into a single `SSL_write`. Writes that queue while a write is pending, or that happen in the same tick (HTTP corking), merge into one record. | VERIFIED | [DOC] Node v24 `src/crypto/crypto_tls.cc` [R78]; [OWN] 50 same-tick `res.write()` calls → 1 record of 9,181 bytes (§11.3) |
+| TLS record → TCP segments | Records larger than the MSS span segments. Several small records can share one segment when writes are coalesced. | VERIFIED | [PR] PromptEcho App. A ("a single TCP segment may contain one or multiple TLS records") [R3] |
+| Kernel coalescing | Linux TCP autocorking coalesces consecutive small writes when a prior packet of the flow is still queued in the qdisc or device. It is enabled by default. | VERIFIED | [DOC] kernel `ip-sysctl.rst` `tcp_autocorking` [R79]; [OWN] `tcp_autocorking=1` on the probe kernel |
+| Offloads | TSO/GSO hand the NIC (or the software GSO path) super-segments to split at MSS. GRO/LRO merge received segments before capture. A host-side capture can show packets larger than the MTU. | VERIFIED | [DOC] kernel `segmentation-offloads.rst` [R79]; Wireshark wiki "CaptureSetup/Offloading" [R80]; [PR] HotNets '25: TSO sends MSS packets at line rate, outside application timing control [R51] |
+| Retransmission | Retransmitted data may be repacketized. Linux's `tcp_retrans_collapse` tries to send bigger packets on retransmit. | VERIFIED | [DOC] kernel `ip-sysctl.rst` [R79] |
+| Loopback | On `lo` the MTU is 65,536 and TSO/GSO/GRO are on, so loopback captures do not represent wire packetization. | VERIFIED | [OWN] `ethtool -k lo` on the probe host (§11.3) |
 
-**Critical observation** [VERIFIED via NetEcho scenarios E/F/G]: these are all **upstream** mitigations. An application that calls OpenAI from its own Next.js backend and re-streams to its users **does not inherit** the `obfuscation` padding — the app's own downstream leg is unprotected. Every self-hosted or fine-tuned deployment (vLLM, SGLang, Ollama, TGI) has no mitigation at all.
+**Consequence (INFERENCE):** Crosstalk measures and stores three distinct observation layers and validates the mapping between them empirically:
 
-[INFERENCE] **The unprotected surface is enormous and growing**: every self-hosted LLM, every AI gateway that re-streams, every RAG app, every agent framework. And there is no reusable, measured, open implementation of a downstream defense. That is Crosstalk's product wedge.
+1. **ApplicationEmission**: what the shaper intended and handed to TLS (time, plaintext bytes, kind).
+2. **TLSRecord**: what the TLS stack produced, reconstructed from the TCP byte stream.
+3. **NetworkPacket**: what the capture point saw.
 
-### 5.2 Confidential computing — and why it is NOT the answer
-
-| Company / product | What it sells | Layer protected |
-|---|---|---|
-| **Google Cloud Confidential GKE Nodes / Confidential VMs** | Memory encryption for nodes; GPU workloads on A3 + NVIDIA H100 with Intel TDX (`a3-highgpu-1g`, single H100, PCIe traffic encrypted and integrity-protected). Confidential Space GA on C3/Intel TDX [VERIFIED] | Data **in use**, vs. the infrastructure operator |
-| **Anthropic** | "Confidential inference via trusted virtual machines" whitepaper (June 2025, with Pattern Labs), extending weight protection to prompt privacy and output non-disclosure; fallback architecture bridging CPU enclave to accelerators without native support [VERIFIED] | Data in use + model weights |
-| **Edgeless Systems (Privatemode AI, Continuum, Contrast, Constellation)** | End-to-end confidential LLM service on NVIDIA H100/Blackwell with remote attestation; claims no third party including Edgeless can access prompts [VERIFIED] | Data in use |
-| **Tinfoil** | Verifiably private AI via secure enclaves + NVIDIA confidential GPUs; SDK fetches and verifies the attestation report before connecting; OpenAI-compatible API; Tinfoil Containers [VERIFIED] | Data in use |
-| **Opaque Systems** | "Confidential AI" platform; $24M at $300M valuation (Feb 2026); acquired MPC/FHE and post-quantum tech from TII (May 2026) [VERIFIED] | Data in use + governance |
-| **Fortanix / Anjuna** | Confidential AI for on-prem AI factories (model IP protection); Anjuna Seaglass hardware-enforced isolation across clouds [VERIFIED] | Data in use |
-| **Apple Private Cloud Compute** | Attested nodes, **Oblivious HTTP relay** (relay sees IP, cannot decrypt; node decrypts but cannot see IP), **target diffusion** with RSA blind-signature single-use credentials so requests cannot be routed to a chosen node [VERIFIED] | Data in use **+ identity/metadata linkage** |
-| **Confident Security — CONFSEC / OpenPCC** | Open-source framework for verifiably private inference; encrypted streaming, hardware attestation, unlinkable requests, OHTTP relay+gateway; **explicitly specifies an anonymization scheme against side channels including API timing, payment side channels and metadata analysis** [VERIFIED] | Data in use + metadata |
-
-**The distinction Crosstalk must state clearly and repeatedly** [VERIFIED by construction + INFERENCE]:
-
-> A TEE protects **the contents of memory from the machine operator**. It does not change **how many bytes leave the machine, or when**. An attested H100 enclave streaming one token per SSE event emits exactly the same packet-size and timing sequence as an unattested one. Confidential computing and traffic-analysis resistance are **orthogonal**; neither substitutes for the other.
-
-Two industry designs are exceptions worth naming because they *do* treat metadata as in-scope: Apple PCC (OHTTP + target diffusion) and OpenPCC (explicit side-channel anonymization). Notably, neither claims to defeat *response-stream shape* analysis; they address **identity linkage** (who is asking), not **content inference** (what is being discussed). And empirically, relay-based identity protection does not confer traffic-analysis protection: **Investigating Traffic Analysis Attacks on Apple iCloud Private Relay** (Ali Zohaib, Jade Sheffey, Amir Houmansadr, AsiaCCS 2023) found Private Relay "highly vulnerable to state-of-the-art website fingerprinting and flow correlation attacks" [VERIFIED].
-
-### 5.3 AI security vendors — securing content, not metadata
-
-| Company | Status | What it secures |
-|---|---|---|
-| **HiddenLayer** | Independent as of 2026 [UNVERIFIED — secondary] | Model scanning, runtime detection & response, red teaming, agentic/MCP protection |
-| **Protect AI** | Acquired by **Palo Alto Networks**, July 2025; folded into Prisma AIRS [UNVERIFIED — secondary] | MLSecOps, model supply chain |
-| **Robust Intelligence** | Acquired by **Cisco**, October 2024; basis of Cisco AI Defense [UNVERIFIED — secondary] | Model validation, guardrails |
-| **Lakera** | Acquired by **Check Point**; announced 16 Sep 2025, completed 11 Nov 2025 [VERIFIED, Check Point press release] | Prompt-injection defense, AI red teaming |
-| **CalypsoAI** | Acquired by **F5** for **$180M**, closed 26 Sep 2025 [VERIFIED, F5 press release] | AI guardrails, red teaming |
-| **Portkey** | Acquired by **Palo Alto Networks** for **$117M**, closed 29 May 2026 [VERIFIED, PANW press release] | AI Gateway → Prisma AIRS control plane |
-
-[INFERENCE] The entire AI-security category is consolidating around **content-layer** threats — prompt injection, jailbreaks, data exfiltration via model output, agent authorization. **Not one of these products addresses network metadata leakage of encrypted inference traffic.** The category that *would* naturally own the fix (AI gateways) has been absorbed into platforms whose threat model is content. This is a genuine, documentable market gap, not a hypothetical one.
-
-### 5.4 AI gateways — the natural deployment point for a defense
-
-| Gateway | Model | Relevance |
-|---|---|---|
-| **LiteLLM** | Open-source self-hosted proxy; virtual keys, budgets, fallbacks | The reference for what a self-hosted LLM proxy does; **no traffic-shaping defense** |
-| **Kong AI Gateway** | Extends Kong API GW to AI traffic | Enterprise ops model |
-| **Envoy AI Gateway** | Envoy + Kubernetes primitives | Closest to Crosstalk's deployment shape |
-| **Cloudflare AI Gateway** | Managed edge; one endpoint, many models | **The only one shipping a padding defense** (the `p` field) |
-| **Portkey** | Managed; now PANW | — |
-| **GKE Inference Gateway** (Gateway API Inference Extension, `kubernetes-sigs/gateway-api-inference-extension`) | `InferencePool` + Endpoint Picker routing on KV-cache utilization, queue length, LoRA adapters; reported 60% tail-latency reduction, up to 40% throughput gain [UNVERIFIED — vendor/secondary figures] | **Directly relevant**: it makes routing decisions from *cache state*, which is exactly the kind of infrastructure behaviour Crosstalk asks whether an observer can see |
-
-[INFERENCE] A defense policy engine belongs in an AI gateway. Every gateway in the market already sits in the right place in the path, holds the streaming buffer, and is the last hop before the client. None implement shaping beyond Cloudflare's padding. Crosstalk's shaper is, architecturally, "the missing gateway plugin," and that framing makes the project legible to industry.
-
-### 5.5 The other side: who sells encrypted-traffic inference
-
-- **Cisco Encrypted Traffic Analytics** [VERIFIED]: extracts the **sequence of packet lengths and times (SPLT)**, TLS-specific features, and the initial data packet; classifies malware "without the need for bulk decryption." SPLT is defined as, for each of the first few packets carrying application payload, the payload length and the inter-arrival time from the previous packet.
-- **NDR vendors** [UNVERIFIED — secondary]: the first Gartner Magic Quadrant for NDR (May 2025) named Vectra AI, Darktrace, ExtraHop and Corelight as Leaders; all market encrypted-traffic analysis without decryption (Corelight via Zeek/Suricata evidence, Vectra explicitly "never decrypts").
-
-[INFERENCE] Cisco's SPLT is *the same feature vector* the academic attacks use, productised and shipped in routers since 2017. This is decisive evidence for a sceptical professor that "packet sizes and times are a usable signal" is engineering reality, not academic novelty. It also means Crosstalk's attacker features should be described in SPLT terms — it is the industry vocabulary.
-
-### 5.6 VPN / anonymity network defenses in production
-
-- **Mullvad DAITA** [VERIFIED]: "Defense against AI-guided Traffic Analysis," built on **Maybenot**, integrated into WireGuard. Mechanism: **constant packet sizes**, random background (cover) traffic, and pattern distortion. Mullvad funds Maybenot development; the framework is peer-reviewed and open access.
-- **NymVPN / Nym mixnet** [VERIFIED]: 5-hop mixnet based on **Loopix**; Poisson mixing (per-hop exponentially distributed delay) plus continuous cover traffic.
-
-[INFERENCE] DAITA is the closest production precedent for what Crosstalk's shaper does — a deployed, open-source, state-machine-driven traffic-shaping layer whose entire purpose is defeating ML traffic classifiers. It is also proof that this class of defense is shippable to real users at acceptable cost. The difference: DAITA protects a *tunnel* with no knowledge of application semantics; Crosstalk shapes a *stream whose application semantics it knows*, which should allow better protection per unit of overhead.
+The primary attack features are defined on the TLSRecord layer, which is robust to segmentation. Packet-layer features are a secondary representation, valid only under a documented offload configuration.
 
 ---
 
-## 6. Open-source landscape and reuse verdicts
+## 2. LLM traffic-analysis attacks (passive network observer)
 
-Verdicts: **REUSE** (take as a dependency) · **ADAPT** (port ideas/code with attribution) · **STUDY** (read, do not depend) · **AVOID**.
+### 2.1 Summary
 
-### 6.1 Attack / research artifacts
-
-| Repo | License | State | Verdict |
-|---|---|---|---|
-| `yo-yo-yo-jbo/whisper_leak` | MIT, Python, ~82★, ~275 commits, active [VERIFIED] | tcpdump capture, 40+ service drivers, LGBM/LSTM/BERT/CNN training, benchmark harness, prompt packs (100 targets + 11,716 Quora negatives) | **STUDY + ADAPT.** Read the feature pipeline and mitigation harness carefully; reimplement ours. Optionally reuse their *prompt pack* as an external replication set to cross-check our numbers. Do not build on their codebase — our system is a platform, not a script. |
-| `royweiss1/GPT_Keylogger` | MIT, Python, ~66★ [VERIFIED] | Two fine-tuned T5 models + eval; **no PCAP parsing** | **STUDY.** Reconstruction is a stretch goal, not the core. If we ever do reconstruction, this is the reference. |
-| `umass-aisec/wra` | [VERIFIED to exist] | Local research-agent leakage | **STUDY.** Future-extension reference only. |
-| `robust-fingerprinting/RF`, `deep-fingerprinting/df`, `kxdkxd/Palette`, `jkhollandjr/RegulaTor`, `jkhollandjr/PETS_DeTorrent`, `wtfpad/wtfpad`, `camelids/ALPaCA` | Various | Classical WF attacks/defenses | **STUDY.** Source of representations (TAM, DF CNN) and defense parameterisations to port to chunk-level. |
-| `maybenot-io/maybenot` | **MIT OR Apache-2.0**, Rust, ~166★, ~324 commits, active; crates: `maybenot`, `maybenot-ffi`, `maybenot-simulator`, `maybenot-machines`, `maybenot-gen`, `maybenot-cli`; used by Mullvad DAITA [VERIFIED] | Probabilistic state machines scheduling padding/blocking | **ADAPT (P3).** Licence and language are ideal. Use as an *optional policy backend* for a state-machine defense arm so we can compare "anonymity-network-style machine" vs. "LLM-aware scheduler." Must not become the project. |
-
-### 6.2 Capture and traffic tooling
-
-| Tool | License | Verdict |
-|---|---|---|
-| `tcpdump`/`libpcap` | BSD | **REUSE** — ground-truth capture, dev loop |
-| `tshark`/Wireshark | GPL-2 | **REUSE as a CLI tool** (not linked into our code) for TLS record dissection and cross-validation of our parser |
-| **Zeek** | BSD | **STUDY.** Excellent for connection-level logs, but we need per-record size/time sequences; a purpose-built extractor is simpler than a Zeek script + deployment |
-| **Suricata** | GPL-2 | **AVOID** — IDS signature matching is irrelevant to our threat model |
-| `gopacket` / `pcap` crates / `scapy` / `dpkt` / `pyshark` | BSD / MIT / GPL-2 / BSD | **REUSE** — one of these for offline trace parsing |
-| **NFStream** | LGPL-3 [UNVERIFIED — confirm before linking] | **STUDY.** Flow-level features; our features are finer-grained |
-| **nPrint / nPrintML** (CCS 2021) | — | **STUDY.** Standardised packet representation for ML; good citation for "why a canonical representation matters" |
-| **Cilium / Hubble** (GKE Dataplane V2 observability) | Apache-2 | **AVOID for features.** [VERIFIED, GCP docs] Hubble flow metrics "don't count the amount of data or number of packets transmitted" — L3/L4 flow metadata and NetworkPolicy verdicts only. **Insufficient for size/timing sequences.** Useful only for NetworkPolicy debugging. |
-| **eBPF (direct)** | — | **P2.** A tc/socket-filter program emitting (ts, dir, len) is elegant and avoids pcap overhead, but adds kernel-version risk. Start with AF_PACKET/libpcap. |
-| **Linux `tc` / `netem`** | GPL | **REUSE** — controlled latency/jitter/loss/bandwidth |
-| **Toxiproxy** (MIT) / **Chaos Mesh** (Apache-2) | | **REUSE (P2)** — failure injection |
-
-### 6.3 Serving, gateway, load generation
-
-| Tool | Note | Verdict |
-|---|---|---|
-| **vLLM** | Apache-2. Verified: `--stream-interval` controls "number of tokens to batch into each streamed chunk" (per-request override clamped up to the server setting; first and last chunks always sent immediately); **automatic prefix caching on by default in V1**; TTFT histograms and speculative-decoding acceptance metrics exposed [VERIFIED, vLLM docs] | **REUSE — primary backend.** `--stream-interval` is a gift: it gives us a *model-server-side* batching defense to compare against our gateway-side one, for free. |
-| **SGLang** | RadixAttention prefix cache (the target of PromptPeek) | **P3 alternative backend** for backend-disjoint generalisation |
-| **Ollama / llama.cpp** | MIT | **REUSE — local dev backend.** Real SSE token streaming on a laptop with no GPU. |
-| **LiteLLM** | MIT | **STUDY.** Reference for provider normalisation; we need a much thinner adapter |
-| **Envoy** (`ext_proc`) | Apache-2 | **STUDY / AVOID as the shaper.** `ext_proc` gives body mutation but adds an extra hop and its own buffering, which perturbs the timing channel we are measuring. Purpose-built proxy is both simpler and more precise. |
-| **NGINX / HAProxy** | BSD-2 / GPL-2 | **STUDY.** Neither exposes per-chunk write scheduling at the granularity we need |
-| **k6** | **AGPL-3.0** [VERIFIED]; SSE via the `xk6-sse` extension [VERIFIED to exist] | **AVOID as a library**; acceptable as an external binary for a generic HTTP load smoke test. AGPL + our need for exact per-chunk timestamps and reproducible seeding makes a custom async generator better. |
-| **Locust** | MIT | **STUDY.** Fine for RPS, poor for per-chunk arrival timestamping |
-| **Custom async generator** | — | **BUILD.** We need seeded reproducibility, per-chunk receive timestamps at the client, and ground-truth logging keyed by `run_id`. ~400 lines of Python/`httpx` or Rust. |
-
-### 6.4 Platform
-
-| Tool | Note | Verdict |
-|---|---|---|
-| **Terraform** | **BUSL-1.1 for ≥ v1.6.0** [VERIFIED]. OpenTofu (MPL-2.0, Linux Foundation) is the open fork | **REUSE Terraform** for the project (student/educational use is unaffected by BUSL's competitive-use restriction) — **but document the licence explicitly** in the ADR; note OpenTofu as the drop-in alternative and that it additionally offers native state encryption |
-| **Terraform GCS backend** | Supports **state locking**; Object Versioning "highly recommended"; KMS encryption supported with automatic migration [VERIFIED] | **REUSE** |
-| **Helm** (Apache-2), **Argo CD** (Apache-2) | | **Helm REUSE; Argo CD P2** (GitHub Actions push-deploy is sufficient at our scale; Argo adds GitOps demonstrably but also a control plane to run) |
-| **Prometheus / Managed Service for Prometheus, Grafana (AGPL-3), OpenTelemetry (Apache-2)** | | **REUSE** |
-| **Optuna** | NSGA-II is the default multi-objective sampler; supports `constraints_func` where >0 means violated; constraint-aware Pareto plots [VERIFIED] | **REUSE** for the defense policy search (P2) |
-| **XGBoost / LightGBM / scikit-learn / PyTorch** | Apache-2 / MIT / BSD-3 / BSD-3 | **REUSE** |
-| **Trivy, Gitleaks, Semgrep, Syft/Grype, Cosign** | | **REUSE** in CI |
-
-**Standing rule** [PROPOSAL]: Crosstalk is not a wrapper around anyone's repository. The shaper, the probe, the feature extractor, the experiment control plane, the workload engine, and the evaluation harness are ours. External code is used for capture primitives, model serving, ML libraries, and infrastructure — never for the contributions we claim.
-
----
-
-## 7. Gap matrix
-
-| # | Existing capability | Already solved? | Quality of existing work | Gap remaining | Crosstalk opportunity |
+| # | Work | Status | Observer & protocol | Serving regime | Headline result |
 |---|---|---|---|---|---|
-| 1 | Token-length → content reconstruction | **Yes** | Excellent (USENIX '24, USENIX '26) | None worth chasing | **Do not rebuild.** Cite; optionally replicate on our own stack as a sanity check |
-| 2 | Packet size+time → topic classification | **Yes** | Excellent (Whisper Leak, 28 models, 5 seeds) | Single topic, binary, one task family | Multi-class, multi-task, with disjoint-split discipline |
-| 3 | Timing → topic via speculative decoding | **Yes** | Excellent (Carlini & Nasr) | — | Cite; use their 80 ms constant-rate result as our baseline |
-| 4 | Leakage under **production serving conditions** (continuous batching, concurrency, autoscaling, cold starts, cache hits) | **No** | Time Will Tell explicitly assumes batch size 1 and flags this as a limitation | **Wide open** | **Core contribution C4.** Concurrency sweep, HPA event visibility, prefix-cache TTFT channel behind an LB |
-| 5 | Defenses for LLM streams | Partially | Proposed in a paragraph; two of Whisper Leak's three were **simulated by summing sizes/times on captured traces**; NetEcho simulates padding | No deployed, measured, open implementation | **Core contribution C1.** Real in-path shaper, measured on the wire |
-| 6 | **Cost** of those defenses (TTFT, ITL, p95, throughput, $/1k req) | **No** | Only Carlini & Nasr (80 ms → +4–13 ms/token, <10% bw) and Time Will Tell (padding → +13–93% latency) give any numbers, for one policy each | No frontier exists | **Core contribution C3.** Empirical leakage-vs-cost Pareto frontier |
-| 7 | **Defense-aware (adaptive) attacker** evaluation | **No** for LLM traffic; **Yes, mandatory** in WF literature since DF (2018) | Whisper Leak's adaptivity is not determinable from the text | Wide open | **Core contribution C2.** Static vs. retrained attacker, reported as a pair, for every defense |
-| 8 | Simulation-vs-implementation gap | Established in WF (WFDefProxy: 21% vs 51–242% time overhead) | High quality, but Tor-specific | Never tested for LLM streams | Measure our own simulated-vs-deployed delta and report it |
-| 9 | Leakage measured in **bits** (not one classifier's accuracy) | **Yes** in WF (WeFDE, DeepSE-WF, Cherubin bounds) | Mature | Never applied to LLM traffic | Port a kNN Bayes/MI estimator; makes defense claims attacker-independent |
-| 10 | Defense **configuration search** under constraints | Padding theory exists (Reed & Reiter); GAN/adversarial defenses exist (Surakav, DeTorrent) | Strong theory, not for streaming LLM | No practical constrained search over measured runs | **Contribution C5.** Multi-objective search (NSGA-II) over *real measured* trials |
-| 11 | Cache-timing channels | **Yes**, from the API-client seat (InputSnatch, PromptPeek, Early Bird, Auditing Prompt Caching) | Excellent | Whether it survives to a **passive observer** behind an LB under load is untested | Experiment E4 — bridges two literatures |
-| 12 | Confidential computing for AI | **Yes**, commercially mature | Strong | **Does not address traffic metadata** | Use as the framing contrast; do not build |
-| 13 | Vendor mitigations deployed | **Yes** (`obfuscation`, `p`, batching) | Shipped, undocumented in effect | No public measurement of their real-world efficacy or cost | Reproduce `obfuscation`-equivalent padding as our **industry baseline arm** and measure it honestly |
-| 14 | Downstream/self-hosted deployments | — | NetEcho shows they inherit nothing | No reusable defense exists for them | The shaper is deployable artifact value beyond the paper |
+| R1 | *What Was Your Prompt?* Weiss, Ayzenshteyn, Amit, Mirsky | [PR] USENIX Security 2024 | Passive; TLS record sizes | Commercial assistants (one token per message at the time) | Reconstructs 29% of responses; topic inferred from 55% |
+| R2 | *Whisper Leak.* McDonald, Bar Or (Microsoft) | [PP] arXiv:2511.03675, Nov 2025 | Passive; `tcpdump` on cloud Ubuntu clients; TLS app-data record sizes + inter-arrival times | 28 commercial LLM APIs; load not controlled | Binary topic detection, often > 98% AUPRC; 17/28 models reach 100% precision at 5–20% recall at a simulated 10,000:1 base rate |
+| R3 | *From Length to Content* (PromptEcho). Li et al. | [PR] USENIX Security 2026; artifact at Zenodo 10.5281/zenodo.20441510 | Passive; TLS record sizes of merged multi-token chunks | GPT-4o, DeepSeek-V3 and other APIs (1–5 tokens/record) | Topic for 42.5% of sessions; 25.5% of responses at cosine > 0.9 |
+| R4 | *NetEcho.* Zhang, Wu, Deng, Wang, Zhang | [PP] arXiv:2510.25472, Oct 2025 | Passive; Wireshark-filtered app-data packets | 7 deployment scenarios incl. self-hosted vLLM with speculative decoding | Topic Top-1 up to 98.2% (Trace A+B); ~70% of conversation information recovered on medical/legal data |
+| R5 | *Remote Timing Attacks on Efficient LM Inference.* Carlini, Nasr | [PP] arXiv:2410.17175, Oct 2024 | Passive and active; inter-packet delay (+ packet size to undo token clustering) | Open models with speculative/parallel decoding; ChatGPT, Claude | 89.5–99.8% medical-vs-coding on open models; language ID 49% top-1 of 10 on ChatGPT |
+| R6 | *Wiretapping LLMs.* Soleimani, Jia, Gim, Lee, Khandelwal | [PP] IACR ePrint 2025/167 | Passive; packet sizes and timing | Reference service (Phi-3 14B + 3.8B draft, RTX 4090, **prompts processed sequentially**); ChatGPT | Private-attribute inference 71–92% (vLLM-style), 50–90% (ChatGPT) |
+| R7 | *Time Will Tell.* Zhang, Saileshwar, Lie | [PP] arXiv:2412.15431, Dec 2024 | Total response time → output token count | **Batch size 1 assumed** | Translation-language ASR 75–83%; GPT-4o class leak 74.7% (remote timing) |
+| R8 | *When Speculation Spills Secrets.* Wei et al. | [PP] arXiv:2411.01076 | Per-iteration token counts or packet sizes | Research prototypes and vLLM (EAGLE) | 1-of-50 query fingerprinting: REST 100%, BiLD 95.2%, LADE 91.6%, EAGLE 77.6% (T=0.3) |
+| R9 | *Leaky Language Models* (LeakyLMs). Majidi, Mireshghallah, Taram | [PP] arXiv:2607.20723, Jul 2026 | **API client** measuring per-token arrival times (not a passive third party) | Commercial APIs; single requests, load not varied | Detects speculative decoding (Gemini 2.5 Flash draft context ≈ 128K) and ranks architecture hyperparameters |
 
-### 7.1 Contribution classification (be honest in the report)
+### 2.2 Whisper Leak: what it did and did not do (read from full text)
 
-| Category | What belongs to Crosstalk |
-|---|---|
-| **Reproduced research** | Token-length/timing topic inference on a self-hosted stack; a Whisper-Leak-style binary detection as a calibration point |
-| **Engineering contribution** | `crosstalk-shaper` — a pluggable, measured, in-path streaming-defense proxy; `crosstalk-probe` — a threat-model-enforcing capture path that never touches plaintext |
-| **System contribution** | The experiment platform: reproducible run definitions, cross-layer correlation (app trace ↔ packet trace ↔ GPU/infra metrics), adaptive-attacker loop as first-class infrastructure |
-| **Experimental contribution** | Leakage under production serving conditions (concurrency, batching, cache, autoscaling, LB tier, network impairment); static-vs-adaptive attacker deltas; measured leakage-vs-cost frontier |
-| **Genuinely new idea (modest, defensible)** | Treating **serving-system configuration as an independent variable in a privacy experiment**, and constrained multi-objective search over *measured* defense configurations |
-| **Speculative extension** | Agent/tool-call traffic leakage; TLS-record-layer vs application-layer defense comparison; cross-provider transfer of defended-traffic attackers |
+- **Design** (VERIFIED): 100 LLM-paraphrased variants of one target question ("legality of money laundering"); 80 for training/validation and 20 held out per trial. Each variant queried 100×. 11,716 Quora negatives queried once each. Spaces inserted randomly to defeat caching; queries shuffled and interleaved; temperature 1.0; 5 seeds per model. [R2 §3.1]
+- **Mitigations** (VERIFIED, Table 3):
 
-**What Crosstalk must never claim**: a new attack; breaking TLS; that any defense is "secure"; any number that came from a simulation when a measurement was possible; or novelty for anything in rows 1–3 of the gap matrix.
+  | Mitigation | Model | Baseline → mitigated AUPRC | How evaluated |
+  |---|---|---|---|
+  | Random padding | microsoft-gpt-4o-mini | 97.5% → 92.9% (Δ 4.5 pp per table) | **Real provider-side obfuscation**: "new parallel data collections … with and without obfuscation enabled" |
+  | Token batching (5) | openai-gpt-4o-mini | 98.2% → 94.8% (Δ 3.5 pp) | **Simulated on captured traces**: "inter-packet arrival times and data lengths are summed to form a single, larger packet" |
+  | Packet injection | openai-gpt-4o-mini | 98.1% → 93.3% (Δ 4.8 pp) | **Simulated on traces**; bandwidth "typically 2-3× traffic volume" |
 
----
+- **Attacker training** (VERIFIED/INFERENCE): the mitigated AUPRCs come from classifiers trained and tested within the mitigated datasets. In effect this is a defense-aware attacker. The paper does **not** report the matching static (undefended-trained) number, so the static-vs-adaptive gap is unknown.
+- **Not measured** (VERIFIED by absence): latency, TTFT or throughput cost of any mitigation; serving load; record-vs-packet boundary validation.
+- **Other facts** (VERIFIED): more training data keeps improving the attack (121,111-capture ablation, Fig. 4); no clear AUPRC trend across temperatures (Fig. 5). Batching providers still showed 84–100% precision at 5% recall (alibaba-qwen2.5 ~4.4 tokens/event, gemini-2.5-pro ~17.7, claude-3-haiku ~6.0).
+- **Disclosure timeline** (VERIFIED): OpenAI mitigated (Aug 2025), Mistral (Sep 2025), xAI (Aug 2025), Microsoft (Oct 2025).
 
-## 8. References
+### 2.3 PromptEcho (verified against the proceedings PDF)
 
-### 8.1 LLM traffic and inference side channels
-1. Weiss, Ayzenshteyn, Amit, Mirsky. *What Was Your Prompt? A Remote Keylogging Attack on AI Assistants.* USENIX Security '24. https://www.usenix.org/conference/usenixsecurity24/presentation/weiss · https://arxiv.org/abs/2403.09751 · code https://github.com/royweiss1/GPT_Keylogger
-2. McDonald, Bar Or. *Whisper Leak: a side-channel attack on Large Language Models.* arXiv:2511.03675. https://arxiv.org/abs/2511.03675 · blog https://www.microsoft.com/en-us/security/blog/2025/11/07/whisper-leak-a-novel-side-channel-cyberattack-on-remote-language-models/ · code https://github.com/yo-yo-yo-jbo/whisper_leak
-3. Li, Cui, Chen, Lin, Gu, Deng, Xu, Li. *From Length to Content: Token-Length Side-Channel Attacks on LLM API Merged Outputs (PromptEcho).* USENIX Security '26. https://www.usenix.org/conference/usenixsecurity26/presentation/li-sijia
-4. Zhang, Wu, Deng, Wang, Zhang. *NetEcho: From Real-World Streaming Side-Channels to Full LLM Conversation Recovery.* arXiv:2510.25472. https://arxiv.org/abs/2510.25472
-5. Carlini, Nasr. *Remote Timing Attacks on Efficient Language Model Inference.* arXiv:2410.17175. https://arxiv.org/abs/2410.17175
-6. Soleimani, Jia, Gim, Lee, Khandelwal. *Wiretapping LLMs: Network Side-Channel Attacks on Interactive LLM Services.* IACR ePrint 2025/167. https://eprint.iacr.org/2025/167
-7. Zhang, Saileshwar, Lie. *Time Will Tell: Timing Side Channels via Output Token Count in Large Language Models.* arXiv:2412.15431. https://arxiv.org/abs/2412.15431
-8. Wei, Abdulrazzag, Zhang, Muursepp, Saileshwar. *When Speculation Spills Secrets: Side Channels via Speculative Decoding in LLMs.* arXiv:2411.01076. https://arxiv.org/abs/2411.01076
-9. Jeong, Teymoorianfard, Kumar, Houmansadr, Bagdasarian. *Network-Level Prompt and Trait Leakage in Local Research Agents.* arXiv:2508.20282. https://arxiv.org/abs/2508.20282 · code https://github.com/umass-aisec/wra
-10. Schneier. *Side-Channel Attacks Against LLMs.* Feb 2026. https://www.schneier.com/blog/archives/2026/02/side-channel-attacks-against-llms.html
+- Per-service token merging varies. Table 1 reports Gemini ×1, GLM ×1, ChatGPT 2–3, DeepSeek 2–3, LLaMA 1–4, Qwen 1–4, StepFun 1–5 tokens per TLS record, with ASR 30–55%. (VERIFIED; a time-dependent vendor behaviour, so do not treat it as a stable property.)
+- Mitigation discussion (VERIFIED, not a deployed evaluation): fixed padding to the MSS costs ≈ 3.2× bandwidth on average; "dynamic padding" ≈ 1.4×. OpenAI deployed default-on `include_obfuscation` in the Responses API.
+- Appendix A (VERIFIED) documents the response preamble in encrypted traffic: **New Session Ticket records**, the HTTP header record and the first SSE event, plus the `data:[DONE]` + chunked terminator. This confirms that TLS control records and HTTP framing confound naive size features.
 
-### 8.2 Cache / API-timing channels
-11. Zheng et al. *InputSnatch: Stealing Input in LLM Services via Timing Side-Channel Attacks.* arXiv:2411.18191. https://arxiv.org/abs/2411.18191
-12. Song, Pang, Wang, Wang, Wang, Chen, Song, Jin, Meng, Hou. *The Early Bird Catches the Leak: Unveiling Timing Side Channels in LLM Serving Systems.* arXiv:2409.20002 (IEEE TIFS). https://arxiv.org/abs/2409.20002
-13. Wu, Zhang, Zhang, Wang, Niu, Wu, Zhang. *I Know What You Asked: Prompt Leakage via KV-Cache Sharing in Multi-Tenant LLM Serving.* NDSS 2025. https://www.ndss-symposium.org/ndss-paper/i-know-what-you-asked-prompt-leakage-via-kv-cache-sharing-in-multi-tenant-llm-serving/
-14. Gu, Li, Kuditipudi, Liang, Hashimoto. *Auditing Prompt Caching in Language Model APIs.* ICML 2025. https://arxiv.org/abs/2502.07776
-15. Chu et al. *Selective KV-Cache Sharing to Mitigate Timing Side-Channels in LLM Inference (SafeKV).* arXiv:2508.08438. https://arxiv.org/abs/2508.08438
-16. Pennas, Papaioannou, Guarnieri, Doudali. *PrefixWall: Mitigating Prefix Caching Side Channels in Shared LLM Systems.* arXiv:2603.10726. https://arxiv.org/abs/2603.10726
-17. Ding, Xu, Shen, Ding, Fei. *MoEcho: Exploiting Side-Channel Attacks to Compromise User Privacy in Mixture-of-Experts LLMs.* CCS 2025. https://arxiv.org/abs/2508.15036
+### 2.4 NetEcho (precise restatement)
 
-### 8.3 Classical traffic analysis — attacks
-18. Song, Wagner, Tian. *Timing Analysis of Keystrokes and Timing Attacks on SSH.* USENIX Security 2001. https://www.usenix.org/conference/10th-usenix-security-symposium/timing-analysis-keystrokes-and-timing-attacks-ssh
-19. Chen, Wang, Wang, Zhang. *Side-Channel Leaks in Web Applications.* IEEE S&P 2010. https://www.microsoft.com/en-us/research/publication/side-channel-leaks-in-web-applications-a-reality-today-a-challenge-tomorrow/
-20. Wright, Ballard, Coull, Masson, Monrose. *Spot Me if You Can: Uncovering Spoken Phrases in Encrypted VoIP Conversations.* IEEE S&P 2008. https://www.cs.unc.edu/~fabian/papers/oakland08.pdf
-21. Schuster, Shmatikov, Tromer. *Beauty and the Burst: Remote Identification of Encrypted Video Streams.* USENIX Security 2017. https://www.usenix.org/conference/usenixsecurity17/technical-sessions/presentation/schuster
-22. Panchenko et al. *Website Fingerprinting at Internet Scale (CUMUL).* NDSS 2016. https://www.comsys.rwth-aachen.de/publication/2016/2016_panchenko_website-fingerprinting-at-internet/2016_panchenko_website-fingerprinting-at-internet.pdf
-23. Hayes, Danezis. *k-fingerprinting: A Robust Scalable Website Fingerprinting Technique.* USENIX Security 2016. https://www.usenix.org/conference/usenixsecurity16/technical-sessions/presentation/hayes
-24. Sirinam, Imani, Juarez, Wright. *Deep Fingerprinting.* CCS 2018. https://arxiv.org/abs/1801.02265
-25. Shen, Ji, Gao, Li, Zhu, Xu. *Subverting Website Fingerprinting Defenses with Robust Traffic Representation.* USENIX Security 2023. https://www.usenix.org/conference/usenixsecurity23/presentation/shen-meng
-26. Zohaib, Sheffey, Houmansadr. *Investigating Traffic Analysis Attacks on Apple iCloud Private Relay.* AsiaCCS 2023. https://dl.acm.org/doi/10.1145/3579856.3595793
+- Evaluated scenarios A, B, D, E, F, G (Table IV). Scenarios F and G "simulate active defense settings by implementing padding logic in vLLM (using Qwen3-32B)" with speculative decoding. In F, padding is therefore deployed in a self-hosted serving path. (VERIFIED)
+- Trace A (token counts per group) alone gives Top-1/Top-3 of 72.6–77.7 / 90.9–91.4% (medical) where it is informative. For the GPT-4o API it was ineffective (≈ 11% Top-1), which suggests OpenAI restructures packets. (VERIFIED; v1.0's "~80%+ via Trace A" was a loose paraphrase.)
+- Dummy-packet defense was **simulated** by "inserting copies of existing packets at random positions". Accuracy drops ≈ 2% on average up to a 20% dummy rate, then sharply at 50–100% in several scenarios (e.g. 94→24% Top-1). (VERIFIED, Table IX)
+- Padding degrades Trace B to Trace-A-only performance. Network noise (loss/reordering up to 10%) was simulated, with topic recovery staying above 80%. (VERIFIED)
+- Downstream apps built on frameworks like Next.js or FastChat do not inherit upstream padding. "The compatibility problems are often more challenging than the modification cost itself." (VERIFIED)
 
-### 8.4 Classical traffic analysis — defenses
-27. Wright, Coull, Monrose. *Traffic Morphing.* NDSS 2009. https://www.ndss-symposium.org/ndss2009/traffic-morphing-efficient-defense-against-statistical-traffic-analysis/
-28. Dyer, Coull, Ristenpart, Shrimpton. *Peek-a-Boo, I Still See You (BuFLO).* IEEE S&P 2012. https://www.freehaven.net/anonbib/cache/oakland2012-peekaboo.pdf
-29. Cai, Nithyanand, Wang, Johnson, Goldberg. *A Systematic Approach to Developing and Evaluating Website Fingerprinting Defenses (Tamaraw).* CCS 2014. https://dl.acm.org/doi/10.1145/2660267.2660362
-30. Juarez, Imani, Perry, Diaz, Wright. *Toward an Efficient Website Fingerprinting Defense (WTF-PAD).* ESORICS 2016. https://arxiv.org/abs/1512.00524
-31. Wang, Goldberg. *Walkie-Talkie.* USENIX Security 2017. https://www.usenix.org/conference/usenixsecurity17/technical-sessions/presentation/wang-tao
-32. Gong, Wang. *Zero-delay Lightweight Defenses against Website Fingerprinting (FRONT/GLUE).* USENIX Security 2020. https://www.usenix.org/conference/usenixsecurity20/presentation/gong
-33. Holland, Hopper. *RegulaTor.* PETS 2022. https://petsymposium.org/popets/2022/popets-2022-0049.pdf
-34. Gong et al. *Surakav: Generating Realistic Traces for a Strong Website Fingerprinting Defense.* IEEE S&P 2022. https://ieeexplore.ieee.org/document/9833722/
-35. Shen et al. *Real-Time Website Fingerprinting Defense via Traffic Cluster Anonymization (Palette).* IEEE S&P 2024. http://www.thucsnet.com/wp-content/papers/meng_sp2024.pdf
-36. Holland, Carpenter, Oh, Hopper. *DeTorrent: An Adversarial Padding-only Traffic Analysis Defense.* PETS 2024. https://petsymposium.org/popets/2024/popets-2024-0007.pdf
-37. Cherubin, Hayes, Juarez. *Website Fingerprinting Defenses at the Application Layer (ALPaCA/LLaMA).* PETS 2017. https://petsymposium.org/2017/papers/issue2/paper54-2017-2-source.pdf
-38. Pulls, Witwer. *Maybenot: A Framework for Traffic Analysis Defenses.* WPES 2023. https://arxiv.org/abs/2304.09510 · code https://github.com/maybenot-io/maybenot
-39. Mehta, Alzayat, de Viti, Brandenburg, Druschel, Garg. *Pacer: Comprehensive Network Side-Channel Mitigation in the Cloud.* arXiv:1908.11568. https://arxiv.org/abs/1908.11568
-40. Reed, Reiter. *Optimally Hiding Object Sizes with Constrained Padding.* arXiv:2108.01753. https://arxiv.org/abs/2108.01753
+### 2.5 Wiretapping LLMs (under-weighted in v1.0)
 
-### 8.5 Methodology and measurement
-41. Juarez, Afroz, Acar, Diaz, Greenstadt. *A Critical Evaluation of Website Fingerprinting Attacks.* CCS 2014. https://www.freehaven.net/anonbib/cache/ccs2014-critical.pdf
-42. Cherubin. *Bayes, not Naïve: Security Bounds on Website Fingerprinting Defenses.* PETS 2017. https://arxiv.org/abs/1702.07707
-43. Li, Guo, Hopper. *Measuring Information Leakage in Website Fingerprinting Attacks and Defenses (WeFDE).* CCS 2018. https://www-users.cse.umn.edu/~hoppernj/wefde-ccs2018.pdf
-44. Veicht, Renggli, Barradas. *DeepSE-WF: Unified Security Estimation for Website Fingerprinting Defenses.* arXiv:2203.04428. https://arxiv.org/abs/2203.04428
-45. Cherubin, Jansen, Troncoso. *Online Website Fingerprinting.* USENIX Security 2022. https://www.usenix.org/conference/usenixsecurity22/presentation/cherubin
-46. Arp, Quiring, Pendlebury, Warnecke, Pierazzi, Wressnegger, Cavallaro, Rieck. *Dos and Don'ts of Machine Learning in Computer Security.* USENIX Security 2022. https://www.usenix.org/system/files/sec22summer_arp.pdf
-47. Gong, Zhang, Zhang, Wang. *WFDefProxy: Modularly Implementing and Empirically Evaluating Website Fingerprinting Defenses.* arXiv:2111.12629. https://arxiv.org/abs/2111.12629
-48. Witwer, Holland, Hopper. *Padding-only defenses add delay in Tor.* arXiv:2208.02917. https://arxiv.org/abs/2208.02917
-49. Lavrentieva, Juarez, Honda. *Rethinking the Role of Network Stacks for Website Fingerprinting Defenses.* HotNets 2025. https://conferences.sigcomm.org/hotnets/2025/papers/hotnets25-final494.pdf
-50. Witwer. *State Machine Frameworks for Website Fingerprinting Defenses: Maybe Not.* arXiv:2310.10789. https://arxiv.org/abs/2310.10789
-51. Siby, Juarez, Diaz, Vallina-Rodriguez, Troncoso. *Encrypted DNS ⇒ Privacy? A Traffic Analysis Perspective.* NDSS 2020. https://www.ndss-symposium.org/ndss-paper/encrypted-dns-privacy-a-traffic-analysis-perspective/
+It measures five streaming designs on a reference service and reports **both** attack accuracy **and** overheads (VERIFIED, §6–7, Fig. 11–12):
 
-### 8.6 Industry, standards and platform documentation
-52. Cloudflare. *Mitigating a token-length side-channel attack in our AI products.* https://blog.cloudflare.com/ai-side-channel-attack-mitigated/
-53. OpenAI. *Chat Completions streaming events* (`obfuscation`, `stream_options.include_obfuscation`). https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events
-54. Apple Security Research. *Private Cloud Compute.* https://security.apple.com/blog/private-cloud-compute/
-55. Anthropic. *Confidential inference via trusted virtual machines.* https://www.anthropic.com/research/confidential-inference-trusted-vms
-56. Confident Security. *Introducing OpenPCC.* https://blog.confident.security/openpcc/ · code https://github.com/openpcc/openpcc
-57. Cisco. *Encrypted Traffic Analytics* (SPLT). https://www.cisco.com/c/en/us/solutions/collateral/enterprise-networks/enterprise-network-security/at-a-glance-c45-740079.html
-58. Mullvad. *Introducing DAITA.* https://mullvad.net/en/blog/introducing-defense-against-ai-guided-traffic-analysis
-59. Nym. *Nym Mixnet.* https://nym.com/mixnet
-60. RFC 8446 §5.4 (TLS 1.3 record padding); RFC 9113 §6.1 (HTTP/2 DATA padding); RFC 9000 §19.1 (QUIC PADDING); RFC 8467 (DNS EDNS(0) padding policies) https://www.rfc-editor.org/rfc/rfc8467
-61. OpenSSL. *SSL_CTX_set_block_padding / SSL_CTX_set_record_padding_callback.* https://www.openssl.org/docs/manmaster/man3/SSL_CTX_set_record_padding_callback.html
-62. Go. *crypto/tls dynamic record sizing* (`tcpMSSEstimate`, `recordSizeBoostThreshold`, `DynamicRecordSizingDisabled`). https://tip.golang.org/src/crypto/tls/conn.go
-63. Google Cloud. *Packet Mirroring.* https://docs.cloud.google.com/vpc/docs/packet-mirroring
-64. Google Cloud. *Network Security Integration — out-of-band integration overview.* https://cloud.google.com/network-security-integration/docs/out-of-band/out-of-band-integration-overview
-65. Google Cloud. *GKE Autopilot security capabilities.* https://docs.cloud.google.com/kubernetes-engine/docs/concepts/autopilot-security
-66. Google Cloud. *Global external Application Load Balancer overview.* https://docs.cloud.google.com/load-balancing/docs/https
-67. Google Cloud. *Passthrough Network Load Balancer overview.* https://docs.cloud.google.com/load-balancing/docs/passthrough-network-load-balancer
-68. Google Cloud. *Pub/Sub exactly-once delivery.* https://docs.cloud.google.com/pubsub/docs/exactly-once-delivery
-69. Google Cloud. *GKE Dataplane V2 observability.* https://docs.cloud.google.com/kubernetes-engine/docs/concepts/about-dpv2-observability
-70. Google Cloud. *Serve Gemma open models using GPUs on GKE with vLLM.* https://docs.cloud.google.com/kubernetes-engine/docs/tutorials/serve-gemma-gpu-vllm
-71. HashiCorp. *Terraform GCS backend.* https://developer.hashicorp.com/terraform/language/backend/gcs
-72. `google-github-actions/auth` — Workload Identity Federation. https://github.com/google-github-actions/auth
-73. vLLM. *OpenAI-Compatible Server* (`--stream-interval`) and *Automatic Prefix Caching*. https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/ · https://docs.vllm.ai/en/stable/design/prefix_caching/
-74. Kubernetes SIGs. *Gateway API Inference Extension.* https://github.com/kubernetes-sigs/gateway-api-inference-extension
-75. Check Point. *Check Point Acquires Lakera.* https://www.checkpoint.com/press-releases/check-point-acquires-lakera-to-deliver-end-to-end-ai-security-for-enterprises/
-76. F5. *F5 to acquire CalypsoAI.* https://www.f5.com/company/news/press-releases/f5-to-acquire-calypsoai-to-bring-advanced-ai-guardrails-to-large-enterprises
-77. Palo Alto Networks. *Completes Acquisition of Portkey.* https://www.paloaltonetworks.com/company/press/2026/palo-alto-networks-completes-acquisition-of-portkey-to-secure-ai-agents
+| Design | Security result | Overhead measured |
+|---|---|---|
+| TokenPadding (pad each token to max encoding) | Ineffective (timing still leaks) | 7.5× network |
+| PacketPerRound (one packet per speculative round) | Reduced accuracy vs TokenPadding | none |
+| PacketPadding (pad + inject fake tokens per round) | Near random guess in evaluated cases | 119× bandwidth; negligible interactivity change |
+| NonStreaming | Secure | time-per-token 11.6× / 9.7× |
+| NoSpecDecoding | Secure | interactivity ~5.8× worse |
+
+Serving limitation (VERIFIED): "a reference LLM service that processes user prompts sequentially". Concurrency and continuous batching were not studied.
+
+### 2.6 Other cost evidence
+
+- **Carlini & Nasr** (VERIFIED, §7): a constant-output-rate defense "which will thwart our attacks completely" (their timing attacks). Derived from observed inter-packet-delay distributions: a 10 ms interval gives essentially no latency and +50–300% bandwidth; 80 ms gives < 10% bandwidth and +4–13 ms per token. This is an **analysis over measured distributions, not a deployed shaper**, and it does not normalize sizes.
+- **When Speculation Spills Secrets** (VERIFIED, §6): constant-length padding to 1,024 B drops accuracy to random guessing at 230× payload; random padding up to 48 B gives 5–8× payload; aggregating over up to 20 iterations reduces accuracy while latency "linearly increases".
+- **Time Will Tell** (VERIFIED, §7.3): padding output to the maximum length costs +93% latency on average (Tower) or +13% (MBart50/M2M100), with 67–108% plaintext padding.
+- **LeakyLMs** (VERIFIED from abstract/summary): constant per-token timing is "impractical", increasing latency "several times".
 
 ---
 
-*End of RESEARCH.md. Product decisions derived from this review are in `PRODUCT.md`; engineering execution is in `IMPLEMENTATION_PLAN.md`.*
+## 3. Timing, serving and cache channels (API-client or co-tenant adversary)
+
+Threat model differs from Crosstalk's core: here the adversary measures its **own** request latency. Relevant only to supporting experiment E4.
+
+| Work | Status | Mechanism | Key result |
+|---|---|---|---|
+| InputSnatch, Zheng et al. [R11] | [PP] arXiv:2411.18191 | Prefix/semantic cache timing | Up to 62% medical-data theft; up to 100% legal-topic identification |
+| The Early Bird Catches the Leak, Song et al. [R12] | [PP] arXiv:2409.20002 (journal version reported, not re-verified) | KV and semantic cache timing | System-prompt and shared-prefix recovery on deployed services |
+| I Know What You Asked (PromptPeek), Wu et al. [R13] | [PR] NDSS 2025 | SGLang radix-tree KV cache probing | 99–100% prompt reconstruction in their setting |
+| Auditing Prompt Caching in LM APIs, Gu et al. [R14] | [PR] ICML 2025 | Statistical tests on TTFT | Global cross-user cache sharing detected in 7 API providers |
+| SafeKV [R15], PrefixWall [R16] | [PP] 2025, 2026 | Selective KV sharing / reuse monitoring | Mitigations with reduced isolation cost |
+| Contention-induced reliability collapse, Abu Bakar [R17] | [PP] arXiv:2609.06853, Sep 2026 | API-client cache timing **under load** | Effect size d 0.78 → 0.21 with two background workers; AUROC 0.650 → 0.531 near 61% overlap. Quiet-system measurements overestimate real reliability |
+| vLLM cache salting [R18] | [DOC] vLLM PR #17045; prefix-caching design doc | Per-request `cache_salt` folded into the first block hash | Deployed mitigation for cross-tenant prefix-cache timing |
+
+**INFERENCE:** prefix-cache leakage is well studied and already mitigated in vLLM (`cache_salt`). The newest evidence says load degrades it, even from the API-client seat. It is not a good flagship for Crosstalk. It stays a later, supporting experiment (E4), gated on E0–E2.
+
+---
+
+## 4. Defenses evaluated for LLM streams: the comparison that bounds Crosstalk's novelty
+
+| Work | Defenses | Implementation | Attacker trained on defended data? | Static-vs-adaptive pair? | Costs reported | Serving load varied? | Record/packet boundary validated? |
+|---|---|---|---|---|---|---|---|
+| Weiss 2024 [R1] | padding, grouping, full batching | Proposed only | — | — | Qualitative | No | — |
+| Carlini & Nasr 2024 [R5] | constant rate | Analytical over measured IPD distributions | n/a (claims thwarts timing attack) | No | Bandwidth vs latency curve | No | No |
+| Spec Spills 2024 [R8] | const/random padding, iteration aggregation | Applied in their setup (payload overhead computed) | Likely (INFERENCE: fingerprints built under the mitigated setting) | No | Payload overhead; latency qualitative | No | No |
+| Time Will Tell 2024 [R7] | pad to max length; prompt constraints | Analytical cost from measured lengths | Partly | No | Latency and padding % | No (batch 1) | No |
+| Wiretapping LLMs 2025 [R6] | TokenPadding, PacketPerRound, PacketPadding, NonStreaming, NoSpecDecoding | **Implemented in a reference service** | Likely (INFERENCE: accuracy reported per streaming design) | No | **Bandwidth + time-per-token measured** | **No (sequential)** | Not reported |
+| Whisper Leak 2025 [R2] | random padding; batching; injection | Padding: **real provider**; batching/injection: **trace simulation** | Yes (within-condition training) | **No** | Injection bandwidth only | No | No |
+| NetEcho 2025 [R4] | padding (in vLLM), dummy packets | Padding deployed in own vLLM (F); dummies simulated | Yes (models trained per scenario) | No | No | No | No |
+| PromptEcho 2026 [R3] | padding variants | Discussion; overhead estimates | — | No | Bandwidth estimates | No | Preamble documented |
+| NetShaper 2024 [R38] (not LLM) | DP shaping (size + time) | **Deployed middlebox (QUIC tunnel)** | DP guarantee + empirical | n/a | Bandwidth + latency measured | Adapts to workload | Tunnel-level |
+
+**What the table establishes (INFERENCE, reviewed as of 2026-09-19):**
+
+- Isolated cost measurements exist (Wiretapping LLMs, NetShaper, Carlini & Nasr, Spec Spills, Time Will Tell). Any claim that "costs were never measured" is false.
+- Training attackers on defended traffic exists: explicitly in Whisper Leak and NetEcho, and very likely in Wiretapping LLMs and Spec Spills. "Adaptive attackers were never used for LLM defenses" is false.
+- **We found no work that combines** (a) several defense families deployed in the operator-controlled serving path in front of a production serving engine, (b) wire observation with the emission→record→packet mapping validated independently, (c) static and adaptive attackers reported as a pair under grouped statistics, (d) jointly measured latency (TTFT/ITL percentiles), bandwidth, throughput and CPU, and (e) **serving load and batching configuration varied as experimental factors**. Of these, (e) is the least covered: every LLM paper above either used uncontrolled commercial load or ran at batch size 1 / sequentially.
+- The simulation-vs-deployment gap for LLM stream defenses is untested. Whisper Leak simulated batching; the WF literature shows simulated overheads can be badly wrong (§6.4).
+
+---
+
+## 5. Industry deployments (as of 2026-09-19)
+
+### 5.1 Deployed mitigations
+
+| Vendor | Mechanism | Detail | Label | Source |
+|---|---|---|---|---|
+| Cloudflare (Workers AI, AI Gateway) | Random-length `p` JSON property on each SSE message | Since 2024-03-14; automatic; example `data: {"response":"portugal","p":"abcdefghijklmnopqrstuvwxyz0123456789a"}`; no cost figures published | VERIFIED | [IND] Cloudflare blog [R63] |
+| OpenAI | `obfuscation` field on streaming deltas, on by default | Opt out with `stream_options.include_obfuscation=false`, e.g. "if you trust the network links between your application and the OpenAI API"; adds "a small amount of overhead" | VERIFIED | [DOC] OpenAI API reference [R64] |
+| Microsoft Azure | `obfuscation` field | Same mechanism | VERIFIED | [IND] Microsoft Security blog 2025-11-07 [R65] |
+| Mistral | `p` field | Similar obfuscation | VERIFIED | [IND] [R65] |
+| xAI | Unspecified | "deployed protections" | VERIFIED (no detail) | [IND] [R65] |
+| Various APIs | Multi-token chunks (passive batching) | Tokens per record vary by vendor and over time | VERIFIED as observed; motivation unknown | [PP] Whisper Leak Table 2 [R2]; [PR] PromptEcho Table 1 [R3] |
+| Self-hosted engines (vLLM) | Server-side token aggregation knob | `--stream-interval` (default 1) and per-request `stream_interval` (clamped up to the server value; first and last chunks sent immediately). A throughput knob, not a security feature | VERIFIED | [DOC] vLLM [R62] |
+
+**INFERENCE:**
+- Vendor mitigations are upstream and size-focused (random padding) or incidental (aggregation). Applications that re-stream an upstream API do not inherit them (NetEcho scenario E).
+- No vendor publishes efficacy against an adaptive attacker, or cost figures.
+- Gateway-side padding **already exists** (Cloudflare AI Gateway), so Crosstalk must not claim "no gateway defense exists".
+
+### 5.2 Client compatibility of padding and cover traffic
+
+| Client | Comment lines (`: …`) | Comment-only event block | `data:` event with unknown content | Unknown JSON fields in a chunk | Source |
+|---|---|---|---|---|---|
+| openai-python (`main`) | Ignored (`if line.startswith(":"): return None`) | Produces no event | JSON-decoded and **yielded to the application** (any `event:` name except `thread.*` special-casing) | Tolerated (vendor itself adds `obfuscation`) | [DOC] `src/openai/_streaming.py` [R66] |
+| openai-node (`master`) | Ignored (`if (line.startsWith(':')) return null`) | Produces no event (`!this.event && !this.data.length`) | `JSON.parse`d and **yielded**; non-JSON throws `SyntaxError` | Tolerated (plain objects) | [DOC] `src/core/streaming.ts` [R66] |
+| Spec-compliant EventSource/parsers | Ignored | No dispatch | Dispatched as a message | n/a | [STD] WHATWG HTML §9.2 [R67] |
+
+**Consequences (INFERENCE):**
+- Padding carried in SSE comment lines, or in an extra JSON field, is **deployment-compatible** with the official OpenAI SDKs.
+- Cover traffic sent as comment-only blocks is **deployment-compatible**.
+- Cover traffic sent as `data:` events is **experimental-only**: it reaches application code as a bogus chunk, or crashes the Node SDK on non-JSON data.
+- Hand-rolled parsers (e.g. splitting on `\n\n` and `JSON.parse(block.slice(6))`) may break on comment blocks. Compatibility must therefore be claimed only for a tested client matrix.
+
+---
+
+## 6. Classical traffic-analysis lessons (website fingerprinting and adjacent)
+
+Entries marked † were verified in v1.0 (2026-09-13) and spot-checked on 2026-09-19. The others were re-verified on 2026-09-19.
+
+### 6.1 Same physics, older protocols
+
+| Work | Status | Lesson |
+|---|---|---|
+| Song, Wagner, Tian — SSH keystroke timing † [R19] | [PR] USENIX Security 2001 | One keystroke per packet leaks timing |
+| Wright et al. — *Spot Me if You Can* † [R21] | [PR] IEEE S&P 2008 | Variable-bit-rate encoding leaks phrases |
+| Chen et al. — *Side-Channel Leaks in Web Applications* † [R20] | [PR] IEEE S&P 2010 | HTTPS size/timing leaks health and financial data |
+| Schuster, Shmatikov, Tromer — *Beauty and the Burst* † [R22] | [PR] USENIX Security 2017 | Burst patterns identify encrypted video |
+
+### 6.2 Attacks and representations
+
+CUMUL (signed cumulative-size curve, 104 features) [R23] †; k-fingerprinting (175 features, RF leaf embedding) [R24] †; Deep Fingerprinting (1-D CNN; > 90% against WTF-PAD, 49.7% against Walkie-Talkie) [R25] †; Robust Fingerprinting (traffic aggregation matrix) [R26] †. **INFERENCE:** gradient-boosted trees over summary statistics plus CUMUL are the right cheap baseline; sequence CNNs are justified only if the baseline saturates.
+
+### 6.3 Defenses and what they cost
+
+| Defense | Status | Mechanism | Cost / outcome |
+|---|---|---|---|
+| BuFLO / *Peek-a-Boo* [R27] | [PR] IEEE S&P 2012 | Fixed-size packets at a fixed rate | Nine countermeasures fail against coarse features (total time, bandwidth, bursts); BuFLO needs very high overhead |
+| Tamaraw [R28] † | [PR] CCS 2014 | Constant rate per direction; pad to a multiple of L | High data/time overhead |
+| WTF-PAD [R29] † | [PR] ESORICS 2016 | Adaptive padding, zero latency | Later broken to > 90% by DF trained on defended traces |
+| Walkie-Talkie [R30] † | [PR] USENIX Sec 2017 | Half-duplex + burst molding | ~31% bandwidth, ~34% time |
+| FRONT/GLUE [R31] † | [PR] USENIX Sec 2020 | Front-loaded dummies | Zero latency, moderate data |
+| RegulaTor [R32] †, Surakav [R33] †, Palette [R34] †, DeTorrent [R35] † | [PR] 2022–2024 | Regularisation, generative, cluster anonymisation, adversarial padding | Better trade-offs; Palette deployed as a Tor PT |
+| ALPaCA [R36] † | [PR] PETS 2017 | **Server-side application-layer** padding | Distribution-aware padding far cheaper than naive padding for equal protection |
+| Maybenot / Mullvad DAITA [R37] † | [PR] WPES 2023; [IND] | State-machine padding/blocking framework in a production VPN | Shippable traffic-shaping precedent |
+| **NetShaper** [R38] | [PR] USENIX Security 2024 | Differentially private shaping of sizes and timing; QUIC tunnel; middlebox | Deployed, measured bandwidth/latency trade-offs on video and web workloads |
+| Pacer [R39] † | [PP] | Hypervisor-level cloud shaping | — |
+| Rate–distortion framing [R42] | [PP] arXiv:2607.17889, Jul 2026 | Theoretical Pareto frontier (MI vs Wasserstein cost) for WF defenses | Trace-based, not deployed, not adaptive |
+
+### 6.4 Methodological lessons that transfer
+
+| Lesson | Evidence | Label |
+|---|---|---|
+| Defenses must be evaluated against attackers trained on defended traffic | DF vs WTF-PAD [R25]; SoK re-evaluating nine "efficient" defenses with DL attacks and an on-network implementation [R52] | VERIFIED |
+| Coarse features (total bytes, duration, counts) defeat defenses that only perturb fine structure | *Peek-a-Boo* [R27] | VERIFIED |
+| Simulated overheads can be badly wrong | WFDefProxy: FRONT ≈ 23% more data than simulated; Tamaraw 28–45% less data and 21% time vs 51–242% simulated [R49] | VERIFIED ([PP]) |
+| Application-layer defenses do not control on-wire packet timing | HotNets '25 (TSO sends MSS packets at line rate) [R51] | VERIFIED |
+| Padding-only defenses add delay under network-wide deployment | Witwer, Holland, Hopper [R50] † | VERIFIED |
+| Standards-blessed padding can underdeliver | Encrypted DNS: EDNS(0) padding leaves F1 ≈ 0.45 [R53] † | VERIFIED |
+| Base rates govern real-world precision | Juarez et al. CCS 2014 [R43] † | VERIFIED |
+
+---
+
+## 7. Transport, TLS and HTTP realities
+
+### 7.1 TLS 1.3 details that affect features
+
+| Fact | Consequence for Crosstalk | Label / source |
+|---|---|---|
+| Server sends NewSessionTicket records after the handshake. OpenSSL defaults to 2 in TLS 1.3; Python exposes `SSLContext.num_tickets` for server contexts | Ticket records (~250–282 B in our probe) resemble token events. Baseline sets `num_tickets = 0` in the shaper and records it; a realism arm keeps the default | VERIFIED [DOC] Python `ssl` [R74]; [OWN] §11.3; [PR] PromptEcho App. A [R3] |
+| `close_notify` alert is a small encrypted record at stream end (19 B on the wire in our probe) | The feature extractor must not count it as content | VERIFIED [OWN] |
+| AEAD expansion is constant per suite | Emission→record prediction: `record_len = plaintext + 17` (AES-GCM / ChaCha20-Poly1305) | VERIFIED [R68]; [OWN] |
+| `SSLContext.keylog_filename` writes NSS key logs | Enables tshark decryption in **validation-only** runs; key logs are restricted artifacts | VERIFIED [DOC] [R74] |
+
+### 7.2 TCP
+
+TCP is a byte stream with no message boundaries; retransmitted data need not reuse the original segmentation [STD RFC 9293, R73]. `TCP_NODELAY` disables Nagle. asyncio sets it on TCP transports by default, and Node's `http.createServer` `noDelay` defaults to `true` [R78]. Autocorking, offloads and retransmission repacketization are covered in §1.3. MSS depends on MTU: a GCP VPC defaults to MTU 1460 (§14), while a local Ethernet or veth has 1500.
+
+### 7.3 HTTP/1.1
+
+Chunked transfer coding adds `hex-size CRLF … CRLF` around each chunk [STD RFC 9112 §7.1, R69]. For our event sizes that is +6 bytes, and the hex width grows at 256 and 4,096 bytes. This framing is deterministic and becomes part of every record length.
+
+### 7.4 HTTP/2
+
+- Multiplexes streams on one connection. Stream IDs are encrypted, so an observer cannot attribute records to requests when several streams are active. [STD RFC 9113, R70]
+- DATA frames can carry padding (Pad Length + PADDED flag). §10.7 warns that intermediaries may "remove padding or frame fragmentation", and that padding does not address timing. (VERIFIED)
+- Node exposes `paddingStrategy` (NONE / MAX / ALIGNED to 8 bytes) [R78]. Python `h2` supports DATA padding via `send_data(..., pad_length=...)` [DOC h2 4.4.1].
+- **INFERENCE:** using internal request IDs to split a multiplexed H2 capture is an oracle. The H2 arms must separate "one active stream per connection" (controlled) from "multiplexed" (session-level attack).
+
+### 7.5 HTTP/3 / QUIC
+
+Packet protection hides frames. Coalesced QUIC packets and PADDING frames exist. Observable features are UDP datagram sizes and timing only [R71]. Python `aioquic` 1.3.0 (Oct 2025) exists for a later arm. **INFERENCE:** H3 needs a separate feature pipeline and is out of the ten-day scope.
+
+### 7.6 Capture artifacts
+
+- A capture on the sending host sees pre-segmentation super-packets with TSO/GSO. A capture on the receiving host sees GRO-merged segments. [R79, R80, R51]
+- On veth/bridge paths inside one kernel, GSO packets can traverse unsegmented unless offloads are disabled on the sending veth. (INFERENCE from kernel GSO semantics; **validated on Day 2** by checking max captured IP length ≤ MTU.)
+- Software timestamps are taken at the AF_PACKET tap, not on the wire. Relative timing is valid within one capture host's clock. (INFERENCE)
+
+---
+
+## 8. Serving-stack behaviour
+
+| Fact | Label | Source |
+|---|---|---|
+| vLLM 0.29.0 is current (released 2026-09-09; Python < 3.15, ≥ 3.10) | VERIFIED | [DOC] PyPI [R62] |
+| `--stream-interval` default 1; per-request `stream_interval` raises it for that request; first and last chunks always sent immediately | VERIFIED | [DOC] vLLM docs [R62] |
+| Chat-completions request accepts `min_tokens`, `ignore_eos`, `seed`, `max_completion_tokens`, `cache_salt`, `stream_interval` | VERIFIED | [DOC] vLLM `entrypoints/openai/chat_completion/protocol.py` (main, 2026-09-19) [R62] |
+| `--max-num-seqs`, `--max-num-batched-tokens`, `--enable-chunked-prefill`, `--enable-prefix-caching`, `--prefix-caching-hash-algo` (default `sha256`), `--seed` (default 0) are serve options | VERIFIED | [DOC] vLLM serve CLI [R62] |
+| V1 metrics: `vllm:time_to_first_token_seconds`, `vllm:inter_token_latency_seconds`, `vllm:e2e_request_latency_seconds`, `vllm:request_queue_time_seconds`, `vllm:num_requests_running`, `vllm:num_requests_waiting`, `vllm:kv_cache_usage_perc`, `vllm:prefix_cache_queries`, `vllm:prefix_cache_hits` | VERIFIED | [DOC] vLLM metrics design [R62] |
+| Continuous (iteration-level) batching interleaves requests per decoding step; PagedAttention manages KV memory | VERIFIED | [PR] Orca, OSDI 2022 [R60]; vLLM, SOSP 2023 [R61] |
+| Under continuous batching, per-token timing of one stream depends on co-scheduled requests | INFERENCE (mechanism); Time Will Tell expected the channel to "remain strong" but did not test it [R7] | — |
+| `min_tokens = max_completion_tokens = L` yields exactly L output tokens (EOS suppressed until L) | INFERENCE from parameter semantics; **validated Day 3** by checking realized `completion_tokens` | [R62] |
+
+---
+
+## 9. Evaluation methodology
+
+### 9.1 Pitfalls and the Crosstalk control for each
+
+| Pitfall | Evidence | Crosstalk control (PROPOSED) |
+|---|---|---|
+| Data snooping via related samples in train/test | Arp et al. [R48] | Prompt-family-disjoint grouped CV; template-disjoint and session-disjoint checks |
+| Spurious correlates (length) | Arp et al. [R48]; *Peek-a-Boo* [R27] | Naturalistic **and** length-matched workload regimes, reported side by side (§10) |
+| Time-as-label | Arp et al. [R48]; Whisper Leak shuffling [R2] | Randomized interleaving of classes **and** defense arms within a session |
+| Inappropriate baselines | Arp et al. [R48] | Chance, majority and null-label controls on every evaluation |
+| Base-rate neglect | Juarez 2014 [R43] | Precision at fixed recall re-weighted to explicit base rates |
+| Model-selection leakage | Cawley & Talbot [R56] | Nested grouped CV; scaler/feature selection/early stopping inside the inner loop |
+| Non-independent observations (many traces per prompt family) | Hierarchical bootstrap [R55]; bootstrap theory [R58] | Cluster (prompt-family) bootstrap, paired across arms on identical resamples; session-level resampling as a robustness check |
+| Many comparisons | Holm 1979 [R57] | Pre-declared primary comparisons with Holm correction; everything else labelled exploratory |
+| "Your classifier was weak" | WeFDE [R45], Cherubin [R44], DeepSE-WF [R46] | Report the strongest attacker from a fixed ladder with a declared tuning budget; information-theoretic estimates only as exploratory |
+
+### 9.2 Why non-overlapping CIs are not the test
+
+Two configurations evaluated on the same prompt families are positively correlated. Separately computed CIs overlap even when the paired difference is clearly non-zero, so comparing them is both underpowered and the wrong test. **Crosstalk reports the paired difference and its CI under a family-level cluster bootstrap** (INFERENCE from standard paired/clustered bootstrap theory [R55, R58]).
+
+### 9.3 Adaptive attacker discipline
+
+Static and adaptive attackers must share the same held-out families, model class and tuning budget. The adaptive attacker's training data comes from defended collections of **training families only** (PROPOSED). Otherwise a retrained attacker can appear stronger merely because it saw the test prompts' siblings.
+
+### 9.4 Learning curves
+
+Whisper Leak shows attack performance still rising with data [R2]. Crosstalk reports learning curves for the flagship configurations so that a small-data result is not read as a ceiling (PROPOSED).
+
+### 9.5 Leakage in bits: downgraded
+
+Any distribution-free, high-confidence lower bound on mutual information from N samples is at most O(ln N) [R54]. kNN/KDE estimators in WF work are estimator-dependent [R44–R46]. **Decision:** balanced accuracy, macro-F1, PR-AUC, log-loss and retained leakage are the primary metrics. An MI **lower bound from the confusion matrix** (I(Y;Ŷ) ≤ I(Y;X) by data processing) is an optional P1 figure. kNN MI/Bayes-error estimators are P2 exploratory (INFERENCE).
+
+---
+
+## 10. Confounders and contamination specific to this problem
+
+| Confounder | Mechanism | Control (PROPOSED unless stated) |
+|---|---|---|
+| Prompt length | Client→server request record sizes and TTFT (prefill) scale with prompt tokens | Matched regime stratifies prompt byte/token buckets per class; report request-size-only baseline |
+| Response length | Record count and duration scale with output tokens (Time Will Tell) | Matched regime M2 forces equal output lengths via `min_tokens = max_completion_tokens` |
+| Topic ↔ length coupling in naturalistic data | Classes naturally differ in answer length | Report "length-only" attacker (features: counts/durations only) next to the full attacker |
+| Experiment-control headers | A per-request policy header would change request size by arm | Fixed-width header values; request-size parity asserted in a test |
+| TLS control records | Session tickets, `close_notify` resemble content records | `num_tickets = 0` in baseline; a record-role classifier validated against key-logged decryption |
+| HTTP framing | Headers record, chunk framing, `[DONE]` terminator | Modelled explicitly; the terminator is a public, attacker-known constant |
+| Caching | Prefix-cache hits shorten TTFT | Unique vLLM `cache_salt` per request (fixed width), so no cross-request block reuse [R18]; E4 turns sharing on deliberately |
+| Time drift | Load, thermal state, GPU clocks change over a session | Randomized interleaving of arms; session-disjoint validation; paired arms in the same session; E2 concurrency in time-alternating blocks with replicate sessions |
+| Sampling randomness | Temperature changes token paths | Fixed temperature per regime; seeds recorded; determinism probe measures the noise floor |
+| Capture vantage | Packetization differs between vantages | Primary features on TLSRecord layer; vantage recorded; packet features only with offload config recorded |
+
+---
+
+## 11. Runtime and data-plane implementation evidence
+
+### 11.1 Source-level and documentation facts
+
+| Fact | Label | Source |
+|---|---|---|
+| CPython `asyncio` SSL transport: one `SSL_write` per buffer; ciphertext from several writes is flushed together to the socket | VERIFIED | [DOC] CPython 3.13 `sslproto.py` [R74] |
+| CPython `EpollSelector` rounds timeouts **up** to 1 ms ("epoll_wait() has a resolution of 1 millisecond") | VERIFIED | [DOC] CPython `selectors.py` [R74] |
+| Python 3.14.0–3.14.4 shipped an incremental GC; **3.14.5 reverted** to the 3.13 generational GC after production memory-pressure reports | VERIFIED | [DOC] Python 3.14 What's New [R75] |
+| uvloop 0.22.1 ships wheels for CPython 3.8–3.14; repository active (libuv 1.52.1 upgrade, Jul 2026) | VERIFIED | [DOC] PyPI, GitHub [R81] |
+| dpkt: last commit 2024-05-05 (effectively unmaintained); pyshark last release 2023 | VERIFIED | [DOC] GitHub, PyPI [R81] |
+| Node `TLSWrap::DoWrite` concatenates multi-buffer writes into one `SSL_write` | VERIFIED | [DOC] Node v24 [R78] |
+| Envoy `ext_proc` `FULL_DUPLEX_STREAMED` lets an external processor buffer, split and re-emit body chunks. Each chunk crosses a gRPC stream, and Envoy performs the downstream TLS writes | VERIFIED | [DOC] Envoy `processing_mode.proto` [R82] |
+| nginx `proxy_buffering off` passes the response "synchronously, immediately as it is received", with reads bounded by `proxy_buffer_size`. It has no scheduling of its own | VERIFIED | [DOC] nginx [R83] |
+| OpenResty `ngx.sleep` is available only in rewrite/access/content/timer/ssl phases, **not** in body filters | VERIFIED | [DOC] lua-nginx-module README [R84] |
+
+### 11.2 Data-plane options assessed
+
+| Option | Can it implement timing defenses? | Record-boundary control | Verdict | Label |
+|---|---|---|---|---|
+| Python asyncio + uvloop, own TLS termination | Yes (timers on the loop) | Deterministic: 1 `write()` ≤ 16 KiB → 1 record, even back-to-back | **Primary candidate** | VERIFIED [OWN] + [DOC] |
+| Node.js `https` | Yes | Same-tick or backpressured writes merge into one record; needs explicit emission serialization | Fallback candidate | VERIFIED [OWN] + [DOC] |
+| Java + Netty (no Spring) | Yes (epoll transport has fine-grained scheduling; not measured) | Controllable via explicit `writeAndFlush` | Second fallback, only if both above fail the gate | UNVERIFIED (not measured) |
+| nginx / OpenResty | Only by rewriting the proxy in Lua content handlers | Reads coalesce upstream bytes; nginx decides records | Rejected for the shaper | INFERENCE from [R83, R84] |
+| Envoy + Python `ext_proc` | Yes, via `FULL_DUPLEX_STREAMED` | Envoy decides downstream TLS writes; extra gRPC hop per chunk | Rejected for P0 (opaque, extra hop); possible later "gateway-realism" arm | INFERENCE from [R82] |
+| HAProxy / Caddy / Traefik | Lua (HAProxy) or Go plugins (Caddy/Traefik) required | Proxy-controlled | Rejected (language constraint + opacity) | INFERENCE |
+
+### 11.3 Day-0 probe results [OWN]
+
+**Status: indicative evidence, not the Day-1 gate.** The probe scripts are not kept in the repository. The Day-1 gate rebuilds and re-runs them on the lab host (IMPLEMENTATION_PLAN §3.2).
+
+**Setup (2026-09-19):**
+- Laptop (i5-12450HX, 16 GB), WSL2 kernel 6.6.87.2 with 10 vCPUs, Ubuntu 24.04.
+- Python 3.13.15 (uv-managed) with uvloop 0.22.1; Node.js v24.21.0.
+- TLS 1.3 with a self-signed P-256 certificate. Client and server on the same host over TCP loopback.
+- Loopback is valid for runtime overhead, **not** for packet-layer claims (§1.3).
+
+**(a) Emission → TLS record mapping.** An instrumented client parses record headers from raw ciphertext before decryption (no capture tool needed).
+
+| Server behaviour | Events | Response app-data records | Observation |
+|---|---|---|---|
+| Python asyncio / uvloop, one `transport.write()` per event, 5 ms apart | 50 | 52 (headers + 50 + terminator) | **1 write = 1 record** |
+| Same, 50 writes back-to-back in one loop iteration | 50 | 52 | Records stay separate under bursts |
+| Python `transport.writelines([size_line, payload, CRLF])` per event | 50 | 152 | **3 records per event** |
+| Python, 20,000-byte events | 3 | 8 | Split at 16,384 plaintext bytes (record length 16,401) |
+| Node `res.write()` per event, 5 ms apart | 50 | 50 | Response headers merged into the first event's record; terminator merged into the last |
+| Node, 50 `res.write()` in the same tick | 50 | **1** (9,181 B) | Same-tick writes are coalesced into one record |
+| TLS 1.3 server, default tickets | — | +2 records (250 B Python, 282 B Node) after the handshake | `num_tickets = 0` removes them (Python) |
+| Connection close | — | 19-byte record | `close_notify` alert |
+
+**(b) Timer-driven emission lateness.** Per-stream absolute deadlines every 20 ms, one ~200-byte record per tick, 20 s per run, first 50 ticks excluded. Values are the median across repetitions; "max" is the worst repetition.
+
+| Runtime | Streams | Reps | Ticks/rep | Lateness p50 | p99 | p99.9 | max | CPU (cores) | RSS |
+|---|---|---|---|---|---|---|---|---|---|
+| Python asyncio | 1 | 3 | 951 | 1.46 ms | 2.78 | 3.19 | 4.6 | 0.03 | 26 MB |
+| Python uvloop | 1 | 3 | 951 | 0.73 | 1.61 | 2.29 | 3.0 | 0.03 | 29 MB |
+| Node 24 | 1 | 3 | 951 | 0.46 | 1.50 | 1.71 | 2.5 | 0.03 | 61 MB |
+| Python asyncio | 64 | 3 | 60,864 | 0.78 | 1.89 | 4.90 | 7.2 | 0.39 | 50 MB |
+| Python uvloop | 64 | 3 | 60,864 | 0.33 | 1.60 | 2.37 | 10.4 | 0.34 | 38 MB |
+| Node 24 | 64 | 3 | 60,864 | 0.01 | 1.54 | 2.19 | 16.7 | 0.28 | 87 MB |
+| Python asyncio | 256 | 3 | 243,456 | 0.84 | **8.57** | **24.48** | 32.1 | 0.73 | 120 MB |
+| Python uvloop | 256 | 6 | 243,456 | 0.42 | 3.18 | 7.03 | 17.3 | 0.60 | 63 MB |
+| Node 24 | 256 | 3 | 243,456 | 0.47 | 4.32 | 9.13 | 29.0 | 0.50 | 119 MB |
+
+**(c) Passthrough relay latency.** Mock OpenAI-compatible upstream (plain HTTP, one event per 25 ms per stream) → relay (TLS server, one write per SSE event) → TLS client. Latency is client receive time minus upstream send time on the same monotonic clock. 400 events per stream; median of 2 repetitions.
+
+| Path | Streams | Events/rep | p50 | p99 | p99.9 | max | Relay CPU (cores) |
+|---|---|---|---|---|---|---|---|
+| Direct (no relay, no TLS) | 1 / 64 / 256 | 380 / 24,320 / 97,280 | 0.47 / 0.32 / 0.51 ms | 0.97 / 1.16 / 1.75 | 1.43 / 1.82 / 4.17 | 1.6 / 3.6 / 11.6 | — |
+| Python uvloop relay | 1 / 64 / 256 | same | 0.83 / 0.69 / 0.92 | 1.56 / **2.04** / 6.15 | 2.01 / 2.86 / 13.92 | 2.1 / 6.3 / 55.2 | 0.02 / 0.23 / 0.44 |
+| Python asyncio relay | 1 / 64 / 256 | same | 0.88 / 0.71 / 0.87 | 1.63 / 2.10 / 5.92 | 2.39 / 3.19 / 13.44 | 2.8 / 7.1 / 33.5 | 0.03 / 0.27 / 0.56 |
+| Node relay | 1 / 64 / 256 | same | 1.11 / 0.68 / 0.74 | 2.02 / 2.05 / 10.16 | 2.47 / 4.06 / 20.42 | 2.6 / 6.4 / 32.5 | 0.04 / 0.31 / 0.57 |
+
+**Interpretation (INFERENCE):**
+- For deterministic record boundaries, Python's `write()` path is the simplest to reason about. Node needs an explicit emission serializer.
+- The default asyncio loop degrades at 256 streams. uvloop is required.
+- At the load the experiments need (≤ 64 concurrent streams, ≈ 2.5k events/s), a Python+uvloop relay adds ≈ 0.9 ms at p99, comparable to Node. That is small against the 15–40 ms inter-token intervals being measured.
+- At ≈ 10k events/s, every single-process runtime develops multi-millisecond tails (Python Δp99 ≈ +4.3 ms, Node ≈ +8.4 ms). Scaling out across processes (`SO_REUSEPORT`) is the fix, not a language change.
+- The client (also Python, decrypting TLS) shares the host, so these deltas are upper bounds on relay-added latency.
+- Probe lesson: asyncio holds only weak references to tasks. The first relay run lost tasks to garbage collection at 64 streams until strong references were kept, and the production shaper must do the same (IMPLEMENTATION_PLAN §11.2).
+
+---
+
+## 12. Novelty matrix
+
+| Proposed contribution | Closest prior work | What is different in Crosstalk | Classification |
+|---|---|---|---|
+| Topic/sensitive-topic leakage from TLS record sizes and timing on a self-hosted stack | Whisper Leak, NetEcho, Weiss, Carlini & Nasr | None. It is calibration (E0) | **PRIOR ART** (REPRODUCTION) |
+| An in-path, open, policy-driven streaming shaper | Cloudflare `p` (closed), OpenAI/Azure `obfuscation` (closed), NetShaper (not LLM-aware), Wiretapping's reference service | Open implementation at the operator's last hop, several defense families, LLM/SSE-aware, client-compatibility classes | **ENGINEERING CONTRIBUTION** |
+| Three-layer measurement (emission → record → packet) with independent validation of each defense's on-wire effect | HotNets '25 argument; WFDefProxy for Tor | Applied to LLM stream defenses in a serving path; quantifies emission→record fidelity and record→packet coalescing per defense | **METHODOLOGICAL CONTRIBUTION** |
+| Static vs adaptive attacker reported as a pair, paired grouped statistics, retained-leakage ratio | WF practice; Whisper Leak/NetEcho train within defended data | Explicit pair on identical held-out families with cluster-bootstrap paired CIs | **METHODOLOGICAL CONTRIBUTION** |
+| Naturalistic vs length-matched workload regimes | No LLM traffic paper among those reviewed reports a length-matched control | Quantifies how much leakage is "just length" | **METHODOLOGICAL CONTRIBUTION** |
+| Serving load, continuous batching and stream interval as factors for leakage **and** defense cost/effectiveness | Time Will Tell (batch 1; deferred), Wiretapping (sequential), cache-contention preprint (API-client, cache only) | Controlled concurrency sweep on a real engine with paired arms | **POSSIBLE RESEARCH NOVELTY** (becomes stronger only if the effect is material and robust) |
+| Simulation-vs-deployment delta for LLM stream defenses | WFDefProxy (Tor) | Compare Whisper-Leak-style trace simulation with the deployed defense on the same prompts | **POSSIBLE RESEARCH NOVELTY** (P1) |
+| Leakage-vs-cost frontier | Carlini & Nasr (one curve), Wiretapping (five points), NetShaper (DP knob) | Frontier across families under load, adaptive attacker on the y-axis | **METHODOLOGICAL CONTRIBUTION** (the frontier is a presentation of C/B, not novelty by itself) |
+| Prefix-cache timing visible to a passive observer | InputSnatch, PromptPeek, Early Bird, Auditing; vLLM `cache_salt` | Passive vantage under load | **NOT WORTH PURSUING** as a flagship; optional E4 |
+| Autoscaling / cold-start fingerprinting | None found | Detecting a cold start is not by itself a meaningful privacy harm | **NOT WORTH PURSUING** as a privacy result; keep as a confounder/failure scenario |
+| NSGA-II policy search | Generic MOO; padding theory [R40] | Optimiser over measured runs | **NOT WORTH PURSUING** before substantial measured data (P3) |
+| "Leakage in bits" headline | WeFDE, DeepSE-WF, Cherubin | — | **NOT WORTH PURSUING** as a headline (§9.5) |
+
+No item is classified STRONG RESEARCH NOVELTY. That label would require results we do not have.
+
+## 13. The remaining gap (conservative statement)
+
+> Existing work contains isolated attack results and isolated mitigation measurements for encrypted LLM streams. These include deployed provider padding (Whisper Leak), defenses implemented in reference services with measured overheads (Wiretapping LLMs), and trace-level simulations (Whisper Leak, NetEcho). **After reviewing the works in §2–§6, we found no study that evaluates several deployable defense families in the real serving path with independently validated wire observation, reports static and defense-aware retrained attackers as a pair under grouped statistics, jointly measures latency, bandwidth, throughput and CPU, and varies serving load and batching as experimental factors.** The serving-load dimension is the least covered: every LLM streaming study we found either ran at batch size 1 / sequentially or measured uncontrolled commercial load.
+
+This statement is to be re-checked before any write-up. New preprints appear monthly (two relevant ones appeared in July and September 2026).
+
+---
+
+## 14. Cloud and networking implementation facts
+
+| Fact | Label | Source |
+|---|---|---|
+| GCP VPC default MTU is 1,460 bytes (settable 1,300–8,896). Packets > 1,600 bytes leaving the VPC are dropped | VERIFIED | [DOC] VPC MTU [R85] |
+| External passthrough NLB does **not** terminate TLS ("The passthrough Network Load Balancer cannot perform this task") and preserves source/destination IPs and ports | VERIFIED | [DOC] [R86] |
+| Passthrough NLB uses **direct server return**: "Responses from the backend VMs go directly to the clients, not back through the load balancer" | VERIFIED | [DOC] [R86] |
+| Packet Mirroring clones payloads and headers to collectors behind an internal passthrough NLB. It consumes the mirrored instance's bandwidth, and intranode Pod traffic needs Intranode visibility. Google recommends NSI Packet Mirroring for new deployments | VERIFIED | [DOC] [R87] |
+| GKE Autopilot (page updated 2026-09-18): default capabilities exclude `NET_RAW`, but it can be added in the Pod securityContext. `NET_ADMIN` is allowed with `--workload-policies=allow-net-admin`. No privileged containers (except Google partners), no `hostNetwork`, no host namespaces | VERIFIED | [DOC] [R88] |
+| **INFERENCE:** Autopilot is unsuitable for the measurement baseline because node NIC offloads, host networking and node-level capture are out of reach, not because capture capabilities are impossible | INFERENCE | — |
+| g2-standard-4 (1× L4, 4 vCPU, 16 GiB) ≈ US$0.71/h on demand in us-central1 | UNVERIFIED (third-party calculators) | [R89] — confirm in the GCP pricing console before any campaign |
+| Terraform GCS backend supports state locking; GitHub Actions authenticates to GCP via Workload Identity Federation (`google-github-actions/auth`) | VERIFIED (v1.0) | [DOC] [R90] |
+
+## 15. Claims explicitly rejected
+
+| v1.0 or folklore claim | Why rejected | Replacement |
+|---|---|---|
+| "Nobody has published what those defenses buy or cost" | Wiretapping, Carlini & Nasr, Spec Spills, Time Will Tell, Whisper Leak and PromptEcho report costs | Conservative gap statement (§13) |
+| "Adaptive attacker evaluation has never been applied to LLM streaming defenses" | Whisper Leak and NetEcho train on defended data (Wiretapping very likely) | "No static-vs-adaptive pair reported under grouped statistics" |
+| "First measured leakage-versus-cost Pareto frontier" | Partial frontiers exist (Carlini & Nasr curve; Wiretapping points; NetShaper DP knob) | Frontier across families under load |
+| `SSE event → one write() → one TLS record → one TCP segment → one packet` | Runtime-dependent write→record mapping; TCP coalescing/splitting; offloads | Three observation layers, empirically validated (§1.3) |
+| "Vantage A and Vantage B see the same bytes" | Same TLS byte stream behind L4 passthrough, but packetization, retransmission and timing differ by vantage; with DSR the response path does not traverse the LB at all | Vantage invariants/differences table (PRODUCT.md §6) |
+| "GKE Autopilot drops `CAP_NET_RAW`/`CAP_NET_ADMIN`, which kills capture" | Both can be enabled | §14 |
+| "GC pauses would invalidate timing measurements, so the shaper must be Rust" | Unmeasured assertion; the observer sees the whole system; Day-0 probe shows ms-scale tails in Python/Node | Measure, then decide (Day-1 gate) |
+| "Go's dynamic record sizing is a reason to use Rust" | Irrelevant under the language constraint; Go is not a candidate | — |
+| "Dummy events are ignored by clients" | OpenAI SDKs yield `data:` events to applications | Comment-line cover traffic only for deployment claims (§5.2) |
+| "Whisper Leak's adaptivity is not determinable" | Mitigated results come from classifiers trained on mitigated data | §2.2 |
+| "NetEcho: padded traces still leak ~80%+ via Trace A" | Loose paraphrase | §2.4 precise numbers |
+| "Leakage in bits makes defense claims attacker-independent" | MI estimation limits [R54] | Exploratory only |
+| "Hot-reloadable policies per run" | Adds nondeterminism to provenance | Fixed policy set per session, selected per request by a fixed-width header in lab mode (IMPLEMENTATION_PLAN.md) |
+| "Autoscaling/cold-start signatures are a flagship privacy result" | Detecting a cold start is not a privacy harm by itself | Confounder / failure scenario only |
+| "BigQuery/Pub/Sub/Cloud SQL are needed" | Data volumes fit Parquet + DuckDB on one host; orchestration fits one Postgres | Introduce only when a measured constraint appears |
+
+---
+
+## 16. References
+
+**LLM network side channels**
+- [R1] Weiss, Ayzenshteyn, Amit, Mirsky. *What Was Your Prompt? A Remote Keylogging Attack on AI Assistants.* USENIX Security 2024 [PR]. https://www.usenix.org/conference/usenixsecurity24/presentation/weiss · arXiv:2403.09751
+- [R2] McDonald, Bar Or. *Whisper Leak: a side-channel attack on Large Language Models.* arXiv:2511.03675, 2025 [PP]. https://arxiv.org/abs/2511.03675
+- [R3] Li, Cui, Chen, Lin, Gu, Deng, Xu, Li. *From Length to Content: Token-Length Side-Channel Attacks on LLM API Merged Outputs.* USENIX Security 2026 [PR]. https://www.usenix.org/conference/usenixsecurity26/presentation/li-sijia · artifact https://doi.org/10.5281/zenodo.20441510
+- [R4] Zhang, Wu, Deng, Wang, Zhang. *NetEcho: From Real-World Streaming Side-Channels to Full LLM Conversation Recovery.* arXiv:2510.25472, 2025 [PP]. https://arxiv.org/abs/2510.25472
+- [R5] Carlini, Nasr. *Remote Timing Attacks on Efficient Language Model Inference.* arXiv:2410.17175, 2024 [PP]. https://arxiv.org/abs/2410.17175
+- [R6] Soleimani, Jia, Gim, Lee, Khandelwal. *Wiretapping LLMs: Network Side-Channel Attacks on Interactive LLM Services.* IACR ePrint 2025/167 [PP]. https://eprint.iacr.org/2025/167
+- [R7] Zhang, Saileshwar, Lie. *Time Will Tell: Timing Side Channels via Output Token Count in Large Language Models.* arXiv:2412.15431, 2024 [PP]. https://arxiv.org/abs/2412.15431
+- [R8] Wei, Abdulrazzag, Zhang, Muursepp, Saileshwar. *When Speculation Spills Secrets: Side Channels via Speculative Decoding in LLMs.* arXiv:2411.01076 [PP]. https://arxiv.org/abs/2411.01076
+- [R9] Majidi, Mireshghallah, Taram. *Leaky Language Models: Stealing Architecture and Inference Optimizations via Per-Token Timing.* arXiv:2607.20723, 2026 [PP]. https://arxiv.org/abs/2607.20723
+- [R10] Jeong, Teymoorianfard, Kumar, Houmansadr, Bagdasarian. *Network-Level Prompt and Trait Leakage in Local Research Agents.* arXiv:2508.20282 [PP] (future extension only). https://arxiv.org/abs/2508.20282
+
+**Cache and serving timing**
+- [R11] Zheng et al. *InputSnatch.* arXiv:2411.18191 [PP]. https://arxiv.org/abs/2411.18191
+- [R12] Song et al. *The Early Bird Catches the Leak.* arXiv:2409.20002 [PP]. https://arxiv.org/abs/2409.20002
+- [R13] Wu et al. *I Know What You Asked: Prompt Leakage via KV-Cache Sharing in Multi-Tenant LLM Serving.* NDSS 2025 [PR]. https://www.ndss-symposium.org/ndss-paper/i-know-what-you-asked-prompt-leakage-via-kv-cache-sharing-in-multi-tenant-llm-serving/
+- [R14] Gu, Li, Kuditipudi, Liang, Hashimoto. *Auditing Prompt Caching in Language Model APIs.* ICML 2025 [PR]. https://arxiv.org/abs/2502.07776
+- [R15] Chu et al. *Selective KV-Cache Sharing to Mitigate Timing Side-Channels in LLM Inference (SafeKV).* arXiv:2508.08438 [PP]. https://arxiv.org/abs/2508.08438
+- [R16] Pennas, Papaioannou, Guarnieri, Doudali. *PrefixWall.* arXiv:2603.10726 [PP]. https://arxiv.org/abs/2603.10726
+- [R17] Abu Bakar. *Characterizing Contention-Induced Reliability Collapse in KV-Cache Timing Side Channels for Multi-Tenant LLM Serving.* arXiv:2609.06853, 2026 [PP]. https://arxiv.org/abs/2609.06853
+- [R18] vLLM. *[Core] Prevent side-channel attacks via cache salting* (PR #17045) and *Automatic Prefix Caching* [DOC]. https://github.com/vllm-project/vllm/pull/17045 · https://docs.vllm.ai/en/stable/design/prefix_caching/
+
+**Classical traffic analysis: attacks**
+- [R19] Song, Wagner, Tian. *Timing Analysis of Keystrokes and Timing Attacks on SSH.* USENIX Security 2001 [PR].
+- [R20] Chen, Wang, Wang, Zhang. *Side-Channel Leaks in Web Applications.* IEEE S&P 2010 [PR].
+- [R21] Wright, Ballard, Coull, Masson, Monrose. *Spot Me if You Can.* IEEE S&P 2008 [PR].
+- [R22] Schuster, Shmatikov, Tromer. *Beauty and the Burst.* USENIX Security 2017 [PR].
+- [R23] Panchenko et al. *Website Fingerprinting at Internet Scale (CUMUL).* NDSS 2016 [PR].
+- [R24] Hayes, Danezis. *k-fingerprinting.* USENIX Security 2016 [PR].
+- [R25] Sirinam, Imani, Juarez, Wright. *Deep Fingerprinting.* CCS 2018 [PR]. https://arxiv.org/abs/1801.02265
+- [R26] Shen et al. *Subverting Website Fingerprinting Defenses with Robust Traffic Representation.* USENIX Security 2023 [PR].
+
+**Classical traffic analysis: defenses**
+- [R27] Dyer, Coull, Ristenpart, Shrimpton. *Peek-a-Boo, I Still See You: Why Efficient Traffic Analysis Countermeasures Fail.* IEEE S&P 2012 [PR]. https://dl.acm.org/doi/10.1109/SP.2012.28
+- [R28] Cai et al. *Tamaraw.* CCS 2014 [PR].
+- [R29] Juarez et al. *WTF-PAD.* ESORICS 2016 [PR].
+- [R30] Wang, Goldberg. *Walkie-Talkie.* USENIX Security 2017 [PR].
+- [R31] Gong, Wang. *Zero-delay Lightweight Defenses against Website Fingerprinting (FRONT).* USENIX Security 2020 [PR].
+- [R32] Holland, Hopper. *RegulaTor.* PETS 2022 [PR].
+- [R33] Gong et al. *Surakav.* IEEE S&P 2022 [PR].
+- [R34] Shen et al. *Palette.* IEEE S&P 2024 [PR].
+- [R35] Holland, Carpenter, Oh, Hopper. *DeTorrent.* PETS 2024 [PR].
+- [R36] Cherubin, Hayes, Juarez. *Website Fingerprinting Defenses at the Application Layer (ALPaCA).* PETS 2017 [PR].
+- [R37] Pulls, Witwer. *Maybenot.* WPES 2023 [PR]. https://arxiv.org/abs/2304.09510 · Mullvad DAITA [IND] https://mullvad.net/en/blog/introducing-defense-against-ai-guided-traffic-analysis
+- [R38] Sabzi, Vora, Goswami, Seltzer, Lécuyer, Mehta. *NetShaper: A Differentially Private Network Side-Channel Mitigation System.* USENIX Security 2024 [PR]. https://www.usenix.org/conference/usenixsecurity24/presentation/sabzi
+- [R39] Mehta et al. *Pacer.* arXiv:1908.11568 [PP].
+- [R40] Reed, Reiter. *Optimally Hiding Object Sizes with Constrained Padding.* arXiv:2108.01753 [PP].
+- [R41] Wright, Coull, Monrose. *Traffic Morphing.* NDSS 2009 [PR].
+- [R42] Liu, Cheng, Liu, Wang. *Rate-Distortion Function for Encrypted Traffic Side-Channel Defense.* arXiv:2607.17889, 2026 [PP]. https://arxiv.org/abs/2607.17889
+
+**Methodology and statistics**
+- [R43] Juarez, Afroz, Acar, Diaz, Greenstadt. *A Critical Evaluation of Website Fingerprinting Attacks.* CCS 2014 [PR].
+- [R44] Cherubin. *Bayes, not Naïve: Security Bounds on Website Fingerprinting Defenses.* PETS 2017 [PR].
+- [R45] Li, Guo, Hopper. *Measuring Information Leakage in Website Fingerprinting Attacks and Defenses (WeFDE).* CCS 2018 [PR].
+- [R46] Veicht, Renggli, Barradas. *DeepSE-WF.* arXiv:2203.04428 [PP].
+- [R47] Cherubin, Jansen, Troncoso. *Online Website Fingerprinting.* USENIX Security 2022 [PR].
+- [R48] Arp et al. *Dos and Don'ts of Machine Learning in Computer Security.* USENIX Security 2022 [PR]. https://www.usenix.org/system/files/sec22summer_arp.pdf
+- [R49] Gong, Zhang, Zhang, Wang. *WFDefProxy.* arXiv:2111.12629, 2021 [PP]. https://arxiv.org/abs/2111.12629
+- [R50] Witwer, Holland, Hopper. *Padding-only Defenses Add Delay in Tor.* WPES 2022 [PR]. https://arxiv.org/abs/2208.02917
+- [R51] Lavrentieva, Juarez, Honda. *Rethinking the Role of Network Stacks for Website Fingerprinting Defenses.* HotNets 2025 [PR]. https://doi.org/10.1145/3772356.3772428
+- [R52] Mathews, Holland, Oh, Rahman, Hopper, Wright. *SoK: A Critical Evaluation of Efficient Website Fingerprinting Defenses.* IEEE S&P 2023 [PR]. https://ieeexplore.ieee.org/document/10179289/
+- [R53] Siby, Juarez, Diaz, Vallina-Rodriguez, Troncoso. *Encrypted DNS ⇒ Privacy? A Traffic Analysis Perspective.* NDSS 2020 [PR].
+- [R54] McAllester, Stratos. *Formal Limitations on the Measurement of Mutual Information.* AISTATS 2020 (PMLR 108:875–884) [PR]. https://proceedings.mlr.press/v108/mcallester20a.html
+- [R55] Saravanan, Berman, Sober. *Application of the hierarchical bootstrap to multi-level data in neuroscience.* NBDT 3(5), 2020 [PR]. https://nbdt.scholasticahq.com/article/13927
+- [R56] Cawley, Talbot. *On Over-fitting in Model Selection and Subsequent Selection Bias in Performance Evaluation.* JMLR 11:2079–2107, 2010 [PR]. https://www.jmlr.org/papers/v11/cawley10a.html
+- [R57] Holm. *A Simple Sequentially Rejective Multiple Test Procedure.* Scandinavian Journal of Statistics 6(2), 1979 [PR].
+- [R58] Efron, Tibshirani. *An Introduction to the Bootstrap.* Chapman & Hall, 1993 [book].
+- [R59] Witwer. *State Machine Frameworks for Website Fingerprinting Defenses: Maybe Not.* arXiv:2310.10789 [PP].
+
+**Serving systems**
+- [R60] Yu et al. *Orca: A Distributed Serving System for Transformer-Based Generative Models.* OSDI 2022 [PR].
+- [R61] Kwon et al. *Efficient Memory Management for Large Language Model Serving with PagedAttention.* SOSP 2023 [PR].
+- [R62] vLLM documentation and source, checked 2026-09-19 [DOC]: serve CLI https://docs.vllm.ai/en/latest/cli/serve/ · OpenAI-compatible server https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/ · metrics https://docs.vllm.ai/en/latest/design/metrics/ · request schema https://github.com/vllm-project/vllm/blob/main/vllm/entrypoints/openai/chat_completion/protocol.py · PyPI https://pypi.org/project/vllm/
+
+**Industry and client behaviour**
+- [R63] Cloudflare. *Mitigating a token-length side-channel attack in our AI products.* 2024-03-14 [IND]. https://blog.cloudflare.com/ai-side-channel-attack-mitigated/
+- [R64] OpenAI. *Chat Completions streaming events* (`obfuscation`, `stream_options.include_obfuscation`) [DOC]. https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events
+- [R65] Microsoft Security Blog. *Whisper Leak: A novel side-channel attack on remote language models.* 2025-11-07 [IND]. https://www.microsoft.com/en-us/security/blog/2025/11/07/whisper-leak-a-novel-side-channel-cyberattack-on-remote-language-models/
+- [R66] openai-python `src/openai/_streaming.py` (main) and openai-node `src/core/streaming.ts` (master), read 2026-09-19 [DOC]. https://github.com/openai/openai-python · https://github.com/openai/openai-node
+- [R67] WHATWG. *HTML Living Standard — Server-sent events, event stream interpretation* [STD]. https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation
+
+**Standards**
+- [R68] RFC 8446 — TLS 1.3 [STD]. https://www.rfc-editor.org/rfc/rfc8446
+- [R69] RFC 9112 — HTTP/1.1 [STD]. https://www.rfc-editor.org/rfc/rfc9112
+- [R70] RFC 9113 — HTTP/2 [STD]. https://www.rfc-editor.org/rfc/rfc9113
+- [R71] RFC 9000 (QUIC), RFC 9001 (QUIC-TLS), RFC 9114 (HTTP/3) [STD].
+- [R72] RFC 9457 — Problem Details for HTTP APIs [STD].
+- [R73] RFC 9293 — Transmission Control Protocol [STD]. https://www.rfc-editor.org/rfc/rfc9293
+
+**Runtime and proxy documentation / source**
+- [R74] CPython 3.13: `Lib/asyncio/sslproto.py`, `Lib/selectors.py`, `Doc/library/ssl.rst` [DOC]. https://github.com/python/cpython/tree/3.13
+- [R75] Python 3.14 What's New (GC revert in 3.14.5) [DOC]. https://docs.python.org/3.14/whatsnew/3.14.html
+- [R76] aiohttp `aiohttp/http_writer.py` (master) [DOC]. https://github.com/aio-libs/aiohttp
+- [R77] uvicorn `uvicorn/protocols/http/httptools_impl.py` (master) [DOC]. https://github.com/encode/uvicorn
+- [R78] Node.js v24: `src/crypto/crypto_tls.cc`, `doc/api/http.md`, `doc/api/http2.md` [DOC]. https://github.com/nodejs/node/tree/v24.x
+- [R79] Linux kernel `Documentation/networking/ip-sysctl.rst`, `segmentation-offloads.rst` [DOC]. https://github.com/torvalds/linux/tree/master/Documentation/networking
+- [R80] Wireshark wiki. *CaptureSetup/Offloading* [DOC]. https://wiki.wireshark.org/CaptureSetup/Offloading
+- [R81] PyPI/GitHub metadata for uvloop, dpkt, pyshark, h2, aioquic (read 2026-09-19) [DOC].
+- [R82] Envoy `api/envoy/extensions/filters/http/ext_proc/v3/processing_mode.proto` [DOC]. https://github.com/envoyproxy/envoy
+- [R83] nginx `ngx_http_proxy_module` [DOC]. https://nginx.org/en/docs/http/ngx_http_proxy_module.html
+- [R84] OpenResty `lua-nginx-module` README [DOC]. https://github.com/openresty/lua-nginx-module
+
+**Cloud**
+- [R85] Google Cloud. *Maximum transmission unit* [DOC]. https://docs.cloud.google.com/vpc/docs/mtu
+- [R86] Google Cloud. *Passthrough Network Load Balancer overview* [DOC]. https://docs.cloud.google.com/load-balancing/docs/passthrough-network-load-balancer
+- [R87] Google Cloud. *Packet Mirroring* [DOC]. https://docs.cloud.google.com/vpc/docs/packet-mirroring
+- [R88] Google Cloud. *GKE Autopilot security capabilities* (updated 2026-09-18) [DOC]. https://docs.cloud.google.com/kubernetes-engine/docs/concepts/autopilot-security
+- [R89] Third-party price calculators for g2-standard-4 (Holori, Vantage) — UNVERIFIED; confirm at https://cloud.google.com/compute/gpus-pricing
+- [R90] HashiCorp. *Terraform GCS backend* [DOC] https://developer.hashicorp.com/terraform/language/backend/gcs · `google-github-actions/auth` [DOC] https://github.com/google-github-actions/auth
+
+---
+
+*End of RESEARCH.md. Product and research decisions derived from this evidence are in `PRODUCT.md`; engineering execution is in `IMPLEMENTATION_PLAN.md`.*

@@ -10,6 +10,9 @@ sa-key*.json
 service-account*.json
 kubeconfig
 .kube/
+.secrets/
+*.keylog
+sslkeylog*
 
 # ---- Terraform ----
 .terraform/
@@ -22,11 +25,6 @@ crash.*.log
 terraform.tfvars
 *.auto.tfvars
 !terraform.tfvars.example
-
-# ---- Rust ----
-target/
-**/*.rs.bk
-*.pdb
 
 # ---- Python ----
 __pycache__/
