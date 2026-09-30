@@ -1,0 +1,93 @@
+[project]
+name = "crosstalk"
+version = "0.1.0"
+description = "Encrypted LLM stream measurement laboratory"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "aiohttp>=3.14,<4",
+  "h11>=0.16,<1",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "pyarrow>=20,<27",
+  "structlog>=25,<27",
+  "typer>=0.16,<1",
+  "uvloop>=0.22,<0.23; sys_platform != 'win32'",
+  "pyyaml>=6,<7",
+  "cryptography>=44,<49",
+]
+
+[project.scripts]
+crosstalk = "crosstalk.cli:app"
+crosstalk-mock = "crosstalk.testing.mock_upstream:main"
+
+[dependency-groups]
+dev = [
+  "cryptography>=44,<49",
+  "hypothesis>=6.130,<7",
+  "import-linter>=2.3,<3",
+  "matplotlib>=3.10,<4",
+  "pre-commit>=4.2,<5",
+  "psutil>=6,<8",
+  "pyarrow-stubs>=20.0.0.20260819",
+  "pyright>=1.1.400,<2",
+  "pytest>=8.4,<10",
+  "pytest-asyncio>=1.0,<2",
+  "ruff>=0.12,<1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.workspace]
+members = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crosstalk"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "strict"
+pythonVersion = "3.13"
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.importlinter]
+root_package = "crosstalk"
+
+[[tool.importlinter.contracts]]
+name = "Shaper isolation"
+type = "forbidden"
+source_modules = ["crosstalk.shaper"]
+forbidden_modules = ["crosstalk.capture", "crosstalk.loadgen", "crosstalk.traces", "crosstalk.testing"]
+
+[[tool.importlinter.contracts]]
+name = "Capture isolation"
+type = "forbidden"
+source_modules = ["crosstalk.capture"]
+forbidden_modules = ["crosstalk.traces", "crosstalk.testing", "crosstalk.shaper"]
+
+[[tool.importlinter.contracts]]
+name = "Oracle isolation"
+type = "forbidden"
+source_modules = ["crosstalk.traces.observer"]
+forbidden_modules = ["crosstalk.traces.oracle", "crosstalk.testing"]
+
+[[tool.importlinter.contracts]]
+name = "Testing isolation"
+type = "forbidden"
+source_modules = ["crosstalk.cli", "crosstalk.common", "crosstalk.contracts", "crosstalk.shaper", "crosstalk.capture", "crosstalk.loadgen", "crosstalk.traces", "crosstalk.reporting"]
+forbidden_modules = ["crosstalk.testing"]

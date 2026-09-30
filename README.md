@@ -4,7 +4,7 @@
 
 > In telephony, *crosstalk* is a signal coupling into a channel that was meant to be isolated. Here the encrypted content of an LLM response couples into the size-and-timing channel that TLS does not hide.
 
-**Status:** research and architecture complete (v2.0 docs, 2026-09-19). Implementation starts with Day 1 of the ten-day plan.
+**Status:** research and architecture complete (v2.0 docs, 2026-09-19). The initial Python measurement instrument is under implementation; local fixture and mock-TLS tests pass, while the Linux capture laboratory remains unvalidated.
 
 ## The question
 
@@ -37,6 +37,12 @@ A key design rule: **a socket write is not a TLS record, and a record is not a p
 | [`docs/PRODUCT.md`](docs/PRODUCT.md) | Research and product authority: question, threat and observation model, contributions, experiments, defenses, metrics, risks, limitations |
 | [`docs/RESEARCH.md`](docs/RESEARCH.md) | Evidence authority: verified literature, industry deployments, transport/runtime facts, Day-0 measurements, novelty matrix, rejected claims, references |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | Engineering authority: stack, language decision table, ADRs, schemas, algorithms, quality gates, and the ten-day plan |
+
+## Local instrument
+
+Install dependencies with `uv sync --locked`, then run `make check`. `uv run crosstalk lab certs` creates a local TLS certificate and the ignored artifact directories. On Linux with Docker Engine running, `docker compose -f deploy/compose/lab.yml --profile mock up -d --build --wait` starts the bridge laboratory. Set `CT_UID` and `CT_GID` to the host account IDs if they differ from 1000 so the non-root shaper and load generator can write to the artifact mount.
+
+The validation plan is [`experiments/validation.yaml`](experiments/validation.yaml). Run it in the load generator container with `crosstalk session run /app/experiments/validation.yaml --root /artifacts`. Then run `crosstalk reconstruct run <session-id> --root /artifacts` and `crosstalk reconstruct validate <session-id> --root /artifacts` for each session. The report command is `crosstalk report waterfall <session-id> <request-id> --root /artifacts --output /artifacts/waterfall.png`. Measured status and unresolved host requirements are in [`bench/RESULTS.md`](bench/RESULTS.md) and [`docs/experiments/encrypted-traffic-validation.md`](docs/experiments/encrypted-traffic-validation.md).
 
 ## Ethics
 

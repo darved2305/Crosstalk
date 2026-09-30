@@ -1,0 +1,120 @@
+services:
+  shaper:
+    build:
+      context: ../..
+      dockerfile: services/shaper/Dockerfile
+    user: "${CT_UID:-1000}:${CT_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes:
+      - ../../.secrets/lab.crt:/run/secrets/tls.crt:ro
+      - ../../.secrets/lab.key:/run/secrets/tls.key:ro
+      - ../../artifacts/shaper-log:/artifacts/shaper-log
+    environment:
+      CT_SHAPER_CERT: /run/secrets/tls.crt
+      CT_SHAPER_KEY: /run/secrets/tls.key
+      CT_SHAPER_ORACLE_DIR: /artifacts/shaper-log
+      CT_SHAPER_UPSTREAM_URL: ${CT_UPSTREAM_URL:-http://mock-upstream:8000}
+    ports:
+      - "8443:8443"
+    networks: [edge, backend]
+  shaper-netinit:
+    build:
+      context: ../..
+      dockerfile: services/netinit/Dockerfile
+    network_mode: service:shaper
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ../../artifacts/lab:/artifacts/lab
+  loadgen:
+    build:
+      context: ../..
+      dockerfile: services/loadgen/Dockerfile
+    user: "${CT_UID:-1000}:${CT_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes:
+      - ../../artifacts:/artifacts
+      - ../../.secrets/lab.crt:/run/secrets/lab.crt:ro
+    networks: [edge]
+    depends_on:
+      shaper:
+        condition: service_healthy
+  capture:
+    build:
+      context: ../..
+      dockerfile: services/capture/Dockerfile
+    network_mode: service:loadgen
+    cap_drop: [ALL]
+    cap_add: [NET_RAW, NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ../../artifacts:/artifacts
+    depends_on:
+      loadgen:
+        condition: service_started
+  impairment:
+    profiles: [impaired]
+    build:
+      context: ../..
+      dockerfile: services/netinit/Dockerfile
+    command: ["crosstalk", "lab", "impair", "--root", "/artifacts/lab", "--interface", "eth0"]
+    network_mode: service:loadgen
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ../../artifacts/lab:/artifacts/lab
+  mock-upstream:
+    profiles: [mock]
+    build:
+      context: ../..
+      dockerfile: services/shaper/Dockerfile
+    command: ["crosstalk-mock"]
+    user: "${CT_UID:-1000}:${CT_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    networks: [backend]
+  vllm:
+    profiles: [gpu]
+    image: vllm/vllm-openai:v0.29.0
+    command:
+      - --model
+      - Qwen/Qwen2.5-1.5B-Instruct
+      - --stream-interval
+      - "1"
+      - --max-num-seqs
+      - "64"
+      - --seed
+      - "0"
+      - --gpu-memory-utilization
+      - "0.85"
+      - --max-model-len
+      - "4096"
+    gpus: all
+    networks: [backend]
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    healthcheck:
+      test: [CMD, curl, -f, http://127.0.0.1:8000/health]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+networks:
+  edge:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1500"
+  backend:
+    driver: bridge
+    internal: true
+volumes:
+  hf-cache:

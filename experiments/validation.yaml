@@ -1,0 +1,17 @@
+name: encrypted-traffic-validation
+policy_set:
+  - arm: a0
+    kind: passthrough
+sessions:
+  - experiment_id: encrypted-traffic-validation
+    requests: 200
+    concurrency: 1
+    seed: 1024
+    arm: a0
+    validation: true
+  - experiment_id: encrypted-traffic-validation
+    requests: 200
+    concurrency: 16
+    seed: 1025
+    arm: a0
+    validation: true
