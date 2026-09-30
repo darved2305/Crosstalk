@@ -16,13 +16,20 @@ class ObservedRecord:
 
 
 class TLSClient:
-    def __init__(self, host: str, port: int, context: ssl.SSLContext) -> None:
+    def __init__(
+        self, host: str, port: int, context: ssl.SSLContext, read_chunk_bytes: int = 65_536
+    ) -> None:
+        if not 1 <= read_chunk_bytes <= 65_536:
+            raise ValueError("TLS read chunk must be between 1 and 65536 bytes")
         self.host = host
         self.port = port
         self.context = context
+        self.read_chunk_bytes = read_chunk_bytes
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setblocking(False)
         self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if read_chunk_bytes < 65_536:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
         self.incoming = ssl.MemoryBIO()
         self.outgoing = ssl.MemoryBIO()
         self.tls = context.wrap_bio(self.incoming, self.outgoing, server_hostname=host)
@@ -54,8 +61,19 @@ class TLSClient:
             except ssl.SSLWantWriteError:
                 await self._flush()
 
-    async def __aexit__(self, *_: object) -> None:
-        self.socket.close()
+    async def __aexit__(self, error_type: object, *_: object) -> None:
+        try:
+            if error_type is None:
+                try:
+                    self.socket.shutdown(socket.SHUT_WR)
+                    loop = asyncio.get_running_loop()
+                    async with asyncio.timeout(5):
+                        while await loop.sock_recv(self.socket, 65_536):
+                            continue
+                except (OSError, TimeoutError):
+                    pass
+        finally:
+            self.socket.close()
 
     async def _flush(self) -> None:
         loop = asyncio.get_running_loop()
@@ -64,7 +82,7 @@ class TLSClient:
 
     async def _fill(self) -> None:
         loop = asyncio.get_running_loop()
-        raw = await asyncio.wait_for(loop.sock_recv(self.socket, 65_536), timeout=30)
+        raw = await asyncio.wait_for(loop.sock_recv(self.socket, self.read_chunk_bytes), timeout=30)
         if not raw:
             self.incoming.write_eof()
             return
@@ -111,6 +129,7 @@ def client_context(ca_file: str | None = None, keylog_file: Path | None = None) 
     context.set_alpn_protocols(["http/1.1"])
     if keylog_file is not None:
         keylog_file.parent.mkdir(parents=True, exist_ok=True)
+        keylog_file.parent.chmod(0o775)
         if keylog_file.exists():
             raise ValidationError(f"Keylog already exists: {keylog_file}")
         context.keylog_filename = str(keylog_file)

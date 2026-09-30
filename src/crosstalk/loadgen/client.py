@@ -53,11 +53,12 @@ async def request(
     ca_file: str | None,
     request_id: str | None = None,
     read_delay_ms: float = 0,
+    read_chunk_bytes: int = 65_536,
     keylog_file: Path | None = None,
 ) -> RequestResult:
     rid = request_id or new_ulid()
     context = client_context(ca_file, keylog_file)
-    async with TLSClient(host, port, context) as client:
+    async with TLSClient(host, port, context, read_chunk_bytes) as client:
         connection = h11.Connection(h11.CLIENT)
         payload = json.dumps(body, separators=(",", ":")).encode()
         headers = [
