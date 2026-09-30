@@ -16,7 +16,7 @@ import psutil
 from crosstalk.common.certificates import create_lab_certificate
 from crosstalk.loadgen.client import request
 from crosstalk.loadgen.tls_client import client_context
-from crosstalk.shaper.server import ShaperSettings, run, tls_context
+from crosstalk.shaper.server import ShaperMetrics, ShaperSettings, run, tls_context
 from crosstalk.shaper.sse import SSEParser
 from crosstalk.testing.mock_upstream import run as run_mock
 
@@ -191,6 +191,91 @@ async def timer_case(
     }
 
 
+async def soak_case(duration: float, cert: Path, key: Path) -> dict[str, object]:
+    n_streams = 64
+    interval = 0.02
+    ticks = round(duration / interval)
+    server_context = tls_context(ShaperSettings(cert=cert, key=key))
+    client_tls = client_context(str(cert))
+    ready = asyncio.Event()
+    connected = 0
+    process = psutil.Process()
+    samples: list[dict[str, float | int]] = []
+    cpu_before = time.process_time()
+
+    async def handle(_: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        nonlocal connected
+        connected += 1
+        if connected == n_streams:
+            ready.set()
+        await ready.wait()
+        loop = asyncio.get_running_loop()
+        start = loop.time() + 0.05
+        for tick in range(ticks):
+            deadline = start + tick * interval
+            future: asyncio.Future[None] = loop.create_future()
+            loop.call_at(deadline, future.set_result, None)
+            await future
+            writer.transport.write(b"x" * 200)
+            await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=server_context)
+    port = server.sockets[0].getsockname()[1]
+
+    async def client() -> None:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port, ssl=client_tls)
+        try:
+            while await reader.read(65_536):
+                continue
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    async def monitor() -> None:
+        await ready.wait()
+        start = time.monotonic()
+        while time.monotonic() - start < duration:
+            samples.append(
+                {
+                    "elapsed_seconds": time.monotonic() - start,
+                    "rss_mb": process.memory_info().rss / 1_048_576,
+                    "tasks": len(asyncio.all_tasks()),
+                    "fds": process.num_fds()
+                    if platform.system() == "Linux"
+                    else process.num_handles(),
+                }
+            )
+            await asyncio.sleep(min(10, max(0.01, duration - (time.monotonic() - start))))
+        samples.append(
+            {
+                "elapsed_seconds": time.monotonic() - start,
+                "rss_mb": process.memory_info().rss / 1_048_576,
+                "tasks": len(asyncio.all_tasks()),
+                "fds": process.num_fds() if platform.system() == "Linux" else process.num_handles(),
+            }
+        )
+
+    start_wall = time.perf_counter()
+    async with server, asyncio.TaskGroup() as tasks:
+        tasks.create_task(monitor())
+        for _ in range(n_streams):
+            tasks.create_task(client())
+    wall = time.perf_counter() - start_wall
+    first_rss = float(samples[0]["rss_mb"])
+    last_rss = float(samples[-1]["rss_mb"])
+    return {
+        "measured": True,
+        "duration_seconds": duration,
+        "streams": n_streams,
+        "rss_growth_fraction": (last_rss - first_rss) / first_rss,
+        "peak_rss_mb": max(float(sample["rss_mb"]) for sample in samples),
+        "cpu_cores": (time.process_time() - cpu_before) / wall,
+        "samples": samples,
+    }
+
+
 async def direct_latencies(port: int, n_events: int) -> list[float]:
     reader, writer = await asyncio.open_connection("127.0.0.1", port)
     connection = h11.Connection(h11.CLIENT)
@@ -316,6 +401,125 @@ async def relay_latency(
     return results
 
 
+async def backpressure_case(directory: Path, cert: Path, key: Path) -> dict[str, object]:
+    mock_port, shaper_port, admin_port = free_port(), free_port(), free_port()
+    mock = asyncio.create_task(run_mock("127.0.0.1", mock_port))
+    await wait_port(mock_port)
+    metrics = ShaperMetrics()
+    shaper = asyncio.create_task(
+        run(
+            ShaperSettings(
+                host="127.0.0.1",
+                port=shaper_port,
+                admin_host="127.0.0.1",
+                admin_port=admin_port,
+                cert=cert,
+                key=key,
+                upstream_url=f"http://127.0.0.1:{mock_port}",
+                oracle_dir=directory / "backpressure-log",
+                stall_timeout=2,
+            ),
+            metrics,
+        )
+    )
+    await wait_port(admin_port)
+    payload: dict[str, object] = {
+        "model": "mock",
+        "messages": [{"role": "user", "content": "synthetic"}],
+        "stream": True,
+        "mock_events": 10,
+        "mock_delay_ms": 25,
+    }
+
+    async def healthy() -> tuple[int, float]:
+        results = await asyncio.gather(
+            *(request("127.0.0.1", shaper_port, payload, str(cert)) for _ in range(63)),
+            return_exceptions=True,
+        )
+        samples = [
+            (event.received_ns - event.mock_sent_ns) / 1_000_000
+            for result in results
+            if not isinstance(result, BaseException)
+            for event in result.events
+            if event.mock_sent_ns is not None
+        ]
+        errors = sum(
+            isinstance(result, BaseException) or result.status != 200 for result in results
+        )
+        return errors, percentile(samples, 0.99)
+
+    slow: asyncio.Task[object] | None = None
+    try:
+        baseline_errors, baseline_p99 = await healthy()
+        tasks_before = len(asyncio.all_tasks())
+        slow_payload = {
+            **payload,
+            "mock_events": 1000,
+            "mock_delay_ms": 0,
+            "mock_text": "x" * 16_000,
+        }
+        slow = asyncio.create_task(
+            request(
+                "127.0.0.1",
+                shaper_port,
+                slow_payload,
+                str(cert),
+                read_delay_ms=1000,
+                read_chunk_bytes=1024,
+            )
+        )
+        await asyncio.sleep(0.1)
+        healthy_task = asyncio.create_task(healthy())
+        peak_tasks = len(asyncio.all_tasks())
+        while not healthy_task.done():
+            peak_tasks = max(peak_tasks, len(asyncio.all_tasks()))
+            await asyncio.sleep(0.01)
+        healthy_errors, healthy_p99 = await healthy_task
+        deadline = asyncio.get_running_loop().time() + 8
+        while (
+            metrics.stall_timeouts == 0
+            and not slow.done()
+            and asyncio.get_running_loop().time() < deadline
+        ):
+            await asyncio.sleep(0.05)
+        slow.cancel()
+        with suppress(
+            asyncio.CancelledError, h11.RemoteProtocolError, ssl.SSLError, ConnectionError
+        ):
+            await slow
+        await asyncio.sleep(0)
+        return {
+            "measured": True,
+            "slow_reader_bytes_per_second": 1024,
+            "stall_timeout_seconds": 2,
+            "slow_stream_aborted": metrics.stall_timeouts > 0,
+            "peak_write_buffer_bytes": metrics.peak_write_buffer_bytes,
+            "buffer_cap_bytes": 1_048_576,
+            "buffer_within_cap": metrics.peak_write_buffer_bytes <= 1_048_576,
+            "normal_errors_without_slow": baseline_errors,
+            "normal_errors_with_slow": healthy_errors,
+            "normal_p99_without_slow_ms": baseline_p99,
+            "normal_p99_with_slow_ms": healthy_p99,
+            "normal_p99_change_ms": healthy_p99 - baseline_p99,
+            "tasks_before": tasks_before,
+            "peak_tasks_with_slow_and_healthy_clients": peak_tasks,
+            "tasks_after": len(asyncio.all_tasks()),
+            "active_connections_after": metrics.active_connections,
+        }
+    finally:
+        if slow is not None and not slow.done():
+            slow.cancel()
+            with suppress(
+                asyncio.CancelledError, h11.RemoteProtocolError, ssl.SSLError, ConnectionError
+            ):
+                await slow
+        shaper.cancel()
+        mock.cancel()
+        for task in (shaper, mock):
+            with suppress(asyncio.CancelledError):
+                await task
+
+
 def stream_fidelity(cases: int) -> dict[str, int]:
     import random
 
@@ -342,7 +546,7 @@ def stream_fidelity(cases: int) -> dict[str, int]:
     return {"cases": cases, "mismatches": 0}
 
 
-async def main(duration: float, output: Path) -> None:
+async def main(duration: float, output: Path, soak_seconds: float) -> None:
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         cert, key = create_lab_certificate(root)
@@ -353,6 +557,10 @@ async def main(duration: float, output: Path) -> None:
             if duration >= 20 and platform.system() == "Linux"
             else {"measured": False}
         )
+        backpressure = [
+            await backpressure_case(root / f"backpressure-{index}", cert, key) for index in range(3)
+        ]
+        soak = await soak_case(soak_seconds, cert, key) if soak_seconds > 0 else {"measured": False}
         timers: dict[str, object] = {}
         for n_streams in (1, 64, 256):
             repetitions = [await timer_case(n_streams, duration, cert, key) for _ in range(3)]
@@ -372,8 +580,11 @@ async def main(duration: float, output: Path) -> None:
         "stream_fidelity": fidelity,
         "timers": timers,
         "relay_latency": relay,
-        "backpressure": {"measured": False},
-        "soak": {"measured": False},
+        "backpressure": {
+            "repetitions": backpressure,
+            "median": sorted(backpressure, key=lambda item: item["normal_p99_change_ms"])[1],
+        },
+        "soak": soak,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists():
@@ -385,12 +596,13 @@ async def main(duration: float, output: Path) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--duration", type=float, default=20)
+    parser.add_argument("--soak-seconds", type=float, default=0)
     parser.add_argument("--output", type=Path, default=Path("artifacts/bench/runtime.json"))
     args = parser.parse_args()
     if platform.system() == "Linux":
         import uvloop
 
         with asyncio.Runner(loop_factory=uvloop.new_event_loop) as runner:
-            runner.run(main(args.duration, args.output))
+            runner.run(main(args.duration, args.output, args.soak_seconds))
     else:
-        asyncio.run(main(args.duration, args.output))
+        asyncio.run(main(args.duration, args.output, args.soak_seconds))

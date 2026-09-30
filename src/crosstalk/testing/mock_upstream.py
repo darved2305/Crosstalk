@@ -83,6 +83,8 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) ->
         writer.write(connection.send(h11.Data(data=b"data: [DONE]\n\n")))
         writer.write(connection.send(h11.EndOfMessage()))
         await writer.drain()
+    except ConnectionError:
+        return
     finally:
         writer.close()
 
