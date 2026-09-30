@@ -3,7 +3,7 @@ import socket
 import subprocess
 from pathlib import Path
 
-from crosstalk.common.artifacts import atomic_write
+from crosstalk.common.artifacts import atomic_replace, atomic_write
 from crosstalk.common.errors import CaptureError
 
 
@@ -20,7 +20,12 @@ def configure(root: Path) -> None:
         states[interface] = subprocess.run(
             ["ethtool", "-k", interface], capture_output=True, text=True, check=True
         ).stdout
-    atomic_write(root / "offloads-shaper.json", json.dumps(states, indent=2).encode())
+    target = root / "offloads-shaper.json"
+    data = json.dumps(states, indent=2).encode()
+    if target.exists():
+        atomic_replace(target, data)
+    else:
+        atomic_write(target, data)
 
 
 def impair(root: Path, interface: str) -> None:
@@ -42,6 +47,9 @@ def impair(root: Path, interface: str) -> None:
         "5%",
     ]
     subprocess.run(command, check=True)
-    atomic_write(
-        root / "netem.json", json.dumps({"interface": interface, "command": command}).encode()
-    )
+    target = root / "netem.json"
+    data = json.dumps({"interface": interface, "command": command}).encode()
+    if target.exists():
+        atomic_replace(target, data)
+    else:
+        atomic_write(target, data)

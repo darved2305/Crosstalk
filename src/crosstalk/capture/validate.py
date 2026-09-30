@@ -42,20 +42,27 @@ def validate_tshark(root: Path, session_id: str, capture: Path) -> dict[str, obj
         "-e",
         "tls.record.content_type",
         "-e",
+        "tls.record.opaque_type",
+        "-e",
         "tls.record.length",
     ]
     process = subprocess.run(command, capture_output=True, text=True, check=True)
     oracle: dict[tuple[int, int], list[tuple[int, int, int, int]]] = defaultdict(list)
     for line in process.stdout.splitlines():
         parts = line.split("\t")
-        if len(parts) != 6 or not parts[4] or not parts[5]:
+        if len(parts) != 7 or not parts[6]:
             continue
-        frame, epoch, source_port, destination_port, types, lengths = parts
+        frame, epoch, source_port, destination_port, plain_types, opaque_types, lengths = parts
         direction = 1 if int(source_port) == 8443 else -1
         client_port = int(destination_port if direction == 1 else source_port)
         if client_port not in by_port:
             continue
-        for content_type, length in zip(types.split(","), lengths.split(","), strict=True):
+        types = [value for value in plain_types.split(",") if value]
+        types.extend(value for value in opaque_types.split(",") if value)
+        record_lengths = lengths.split(",")
+        if len(types) != len(record_lengths):
+            raise ValidationError(f"tshark record fields disagree in frame {frame}")
+        for content_type, length in zip(types, record_lengths, strict=True):
             oracle[(by_port[client_port], direction)].append(
                 (int(content_type), int(length), int(frame), round(float(epoch) * 1_000_000_000))
             )
@@ -141,8 +148,12 @@ def evaluate_session(root: Path, session_id: str) -> dict[str, object]:
             reasons.append(f"{key} nonzero")
     if capture["exit_code"] != 0:
         reasons.append("dumpcap exited unsuccessfully")
+    if capture.get("forced_stop"):
+        reasons.append("dumpcap required a forced stop")
     if capture.get("ring_full"):
         reasons.append("Capture ring reached capacity")
+    if capture.get("interface_quiescent") is False:
+        reasons.append("Measured interface did not become quiescent before capture stop")
     offloads = capture["offloads"]
     for feature in (
         "generic-receive-offload",
@@ -168,6 +179,18 @@ def evaluate_session(root: Path, session_id: str) -> dict[str, object]:
         reasons.append("Restricted keylog plaintext comparison failed")
     if manifest["git_dirty"]:
         reasons.append("Source tree was dirty during collection")
+    if not all(
+        name in manifest.get("image_digests", {}) for name in ("shaper", "loadgen", "capture")
+    ):
+        reasons.append("Container image digests are missing")
+    if not manifest.get("model_revision"):
+        reasons.append("Model revision is missing")
+    if not manifest.get("environment", {}).get("shaper_offloads"):
+        reasons.append("Shaper offload snapshot is missing")
+    if manifest.get("environment", {}).get("upstream_kind") == "vllm" and not manifest.get(
+        "tokenizer_revision"
+    ):
+        reasons.append("Tokenizer revision is missing")
     failure_rate = manifest["failed"] / manifest["planned"]
     if failure_rate > 0.02:
         reasons.append("More than 2% of requests failed")

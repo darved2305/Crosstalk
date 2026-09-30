@@ -1,10 +1,12 @@
 import json
+import subprocess
 from pathlib import Path
 
 import pyarrow as pa
+import pytest
 
 from crosstalk.capture.reconstruct import map_flows
-from crosstalk.capture.validate import evaluate_session, validate_emissions
+from crosstalk.capture.validate import evaluate_session, validate_emissions, validate_tshark
 from crosstalk.common.ids import new_ulid
 from crosstalk.contracts.parquet import write_table
 from crosstalk.contracts.tables import schema_for
@@ -118,3 +120,35 @@ def test_flow_mapping_and_emission_length(tmp_path: Path) -> None:
     outcome = evaluate_session(tmp_path, session_id)
     assert outcome["status"] == "INVALID"
     assert "kernel_drops nonzero" in outcome["reasons"]
+
+
+def test_tshark_tls13_opaque_records(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    session_id = new_ulid()
+    observer = tmp_path / "sessions" / session_id / "observer"
+    _table(observer / "flows.parquet", "flows", session_id, [{"flow_id": 0, "client_port": 51000}])
+    _table(
+        observer / "records.parquet",
+        "records",
+        session_id,
+        [
+            {
+                "flow_id": 0,
+                "dir": 1,
+                "idx": index,
+                "t_end_ns": 1_000_000_000,
+                "content_type": content_type,
+                "length": length,
+            }
+            for index, (content_type, length) in enumerate(
+                ((22, 122), (20, 1), (23, 38), (23, 363))
+            )
+        ],
+    )
+    output = "6\t1.000000000\t8443\t51000\t22,20\t23,23\t122,1,38,363\n"
+    monkeypatch.setattr(
+        "crosstalk.capture.validate.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, output, ""),
+    )
+    result = validate_tshark(tmp_path, session_id, tmp_path / "capture.pcapng")
+    assert result["exact"] is True
+    assert result["ours"] == result["tshark"] == 4

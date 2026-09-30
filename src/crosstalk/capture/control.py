@@ -40,6 +40,22 @@ class CaptureSupervisor:
             raise CaptureError(f"{' '.join(args)} failed: {stderr.decode(errors='replace')}")
         return stdout.decode(errors="replace")
 
+    async def _quiescent(self) -> bool:
+        interface = Path("/sys/class/net") / self.interface / "statistics"
+        previous: tuple[int, int] | None = None
+        stable = 0
+        for _ in range(40):
+            current = (
+                int((interface / "rx_packets").read_text().strip()),
+                int((interface / "tx_packets").read_text().strip()),
+            )
+            stable = stable + 1 if current == previous else 0
+            if stable >= 4:
+                return True
+            previous = current
+            await asyncio.sleep(0.05)
+        return False
+
     async def start(
         self, session_id: str, bpf: str = "tcp port 8443", ring_mb: int = 512
     ) -> dict[str, object]:
@@ -81,10 +97,9 @@ class CaptureSupervisor:
         self.process = await asyncio.create_subprocess_exec(
             *self.command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        capture_path = self.capture_file
 
         async def ready() -> None:
-            while not capture_path.exists():
+            while not any(output.glob("cap*.pcapng")):
                 if self.process is None or self.process.returncode is not None:
                     raise CaptureError("dumpcap exited at start")
                 await asyncio.sleep(0.01)
@@ -104,13 +119,34 @@ class CaptureSupervisor:
     async def stop(self, session_id: str) -> dict[str, object]:
         if self.process is None or self.session_id != session_id or self.capture_file is None:
             raise CaptureError("No matching active capture")
-        self.process.send_signal(signal.SIGINT)
-        _, stderr = await asyncio.wait_for(self.process.communicate(), timeout=30)
+        try:
+            quiescent = await self._quiescent()
+        except OSError:
+            quiescent = False
+        if self.process.returncode is None:
+            self.process.send_signal(signal.SIGINT)
+        forced_stop = False
+        try:
+            _, stderr = await asyncio.wait_for(self.process.communicate(), timeout=30)
+        except TimeoutError:
+            self.process.kill()
+            _, stderr = await self.process.communicate()
+            forced_stop = True
         status = self.process.returncode
         stderr_text = stderr.decode(errors="replace")
         files = sorted(self.capture_file.parent.glob("cap*.pcapng"))
         stats = [read_interface_stats(path) for path in files]
-        reported_drops = [int(value) for value in re.findall(r"(\d+) packets dropped", stderr_text)]
+        reported = re.search(
+            r"Packets received/dropped on interface [^:]+:\s*\d+/(\d+)\s*\(([^)]*)\)",
+            stderr_text,
+        )
+        components = (
+            {name: int(value) for name, value in re.findall(r"([a-z_]+):(\d+)", reported.group(2))}
+            if reported
+            else {}
+        )
+        stat_ifdrop = [item.interface_drops for item in stats if item.interface_drops is not None]
+        stat_osdrop = [item.os_drops for item in stats if item.os_drops is not None]
         result: dict[str, object] = {
             "session_id": session_id,
             "interface": self.interface,
@@ -118,17 +154,17 @@ class CaptureSupervisor:
             "offloads": self.offloads,
             "command": self.command,
             "exit_code": status,
+            "forced_stop": forced_stop,
             "stderr": stderr_text,
             "files": [str(path) for path in files],
             "ring_full": len(files) >= 2,
-            "kernel_drops": sum(reported_drops) if reported_drops else None,
-            "interface_drops": sum(
-                item.interface_drops for item in stats if item.interface_drops is not None
-            )
-            if any(item.interface_drops is not None for item in stats)
-            else None,
-            "os_drops": sum(item.os_drops for item in stats if item.os_drops is not None)
-            if any(item.os_drops is not None for item in stats)
+            "interface_quiescent": quiescent,
+            "kernel_drops": int(reported.group(1)) if reported else None,
+            "interface_drops": sum(stat_ifdrop) if stat_ifdrop else components.get("ps_ifdrop"),
+            "os_drops": sum(stat_osdrop)
+            if stat_osdrop
+            else sum(components[name] for name in ("pcap", "dumpcap", "flushed"))
+            if all(name in components for name in ("pcap", "dumpcap", "flushed"))
             else None,
         }
         atomic_write(
@@ -181,7 +217,7 @@ async def serve_control(root: Path, interface: str | None = None) -> None:
             else:
                 raise CaptureError("Unknown control path")
             status = 200
-        except (CaptureError, KeyError, ValueError, TimeoutError) as error:
+        except (CaptureError, KeyError, OSError, ValueError, TimeoutError) as error:
             result = {"error": str(error)}
             status = 400
         finally:
