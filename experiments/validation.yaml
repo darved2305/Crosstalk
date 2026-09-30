@@ -8,10 +8,12 @@ sessions:
     concurrency: 1
     seed: 1024
     arm: a0
+    model: mock
     validation: true
   - experiment_id: encrypted-traffic-validation
     requests: 200
     concurrency: 16
     seed: 1025
     arm: a0
+    model: mock
     validation: true

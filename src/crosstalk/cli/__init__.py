@@ -95,7 +95,18 @@ def reconstruct_validate(session_id: str, root: Path = Path("artifacts")) -> Non
     manifest_path = session / "manifest.json"
     manifest = RunManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
     status = SessionStatus(result["status"])
-    final = manifest.model_copy(update={"status": status, "reasons": result["reasons"]})
+    tshark = json.loads((session / "validation" / "tshark_agreement.json").read_text())
+    fidelity = json.loads((session / "validation" / "emission_fidelity.json").read_text())
+    keylog_path = session / "validation" / "keylog_check.json"
+    checks = {
+        "tshark": bool(tshark["exact"]),
+        "emissions": fidelity["exact_fraction"] >= 0.9999,
+    }
+    if keylog_path.exists():
+        checks["keylogs"] = bool(json.loads(keylog_path.read_text())["exact"])
+    final = manifest.model_copy(
+        update={"status": status, "reasons": result["reasons"], "validation": checks}
+    )
     atomic_replace(manifest_path, final.model_dump_json(indent=2).encode())
     typer.echo(json.dumps(result, indent=2))
 
@@ -126,6 +137,16 @@ def lab_certs(directory: Path = Path(".secrets")) -> None:
     ):
         path.mkdir(parents=True, exist_ok=True)
     typer.echo(str(cert))
+
+
+@lab_app.command("provenance")
+def lab_provenance(
+    root: Path = Path("artifacts"),
+    compose_file: Path = Path("deploy/compose/lab.yml"),
+) -> None:
+    from crosstalk.loadgen.provenance import write_lab_provenance
+
+    typer.echo(str(write_lab_provenance(root, compose_file)))
 
 
 @lab_app.command("netinit")

@@ -16,3 +16,4 @@ lab-certs:
 	uv run crosstalk lab certs
 lab-up:
 	docker compose -f deploy/compose/lab.yml --profile mock up -d --wait
+	uv run crosstalk lab provenance

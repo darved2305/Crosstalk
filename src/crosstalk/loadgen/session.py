@@ -1,7 +1,11 @@
 import asyncio
 import json
+import os
+import platform
+import ssl
 import subprocess
 import time
+from importlib.metadata import version
 from pathlib import Path
 
 import h11
@@ -16,6 +20,7 @@ from crosstalk.contracts.manifest import RunManifest, SessionStatus
 from crosstalk.contracts.parquet import write_table
 from crosstalk.contracts.tables import schema_for
 from crosstalk.loadgen.client import RequestResult, request
+from crosstalk.loadgen.provenance import CaptureMetadata, LabProvenance
 
 
 async def capture_control(path: bytes, session_id: str) -> dict[str, object]:
@@ -47,6 +52,8 @@ async def capture_control(path: bytes, session_id: str) -> dict[str, object]:
         event = connection.next_event()
         if event is h11.NEED_DATA:
             chunk = await asyncio.wait_for(reader.read(4096), timeout=35)
+            if not chunk:
+                raise CaptureError("Capture control closed before completing its response")
             connection.receive_data(chunk)
             continue
         if isinstance(event, h11.Response):
@@ -103,20 +110,33 @@ def _git_state() -> tuple[str, bool]:
     return commit, dirty
 
 
+def _provenance() -> LabProvenance:
+    path = os.environ.get("CT_PROVENANCE_FILE")
+    if path is not None:
+        return LabProvenance.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    commit, dirty = _git_state()
+    return LabProvenance(git_commit=commit, git_dirty=dirty)
+
+
 async def run_session(
     plan: SessionPlan,
     root: Path,
     host: str = "shaper",
     port: int = 8443,
     ca_file: str | None = None,
+    experiment: ExperimentConfig | None = None,
 ) -> str:
+    provenance = _provenance()
+    policies = experiment.policy_set if experiment is not None else []
     session_id = new_ulid()
     session = root / "sessions" / session_id
     session.mkdir(parents=True, exist_ok=False)
+    session.chmod(0o775)
     started = time.time_ns()
     start_mono = time.monotonic_ns()
-    await capture_control(b"/capture/start", session_id)
-    capture_started = True
+    capture_start = CaptureMetadata.model_validate(
+        await capture_control(b"/capture/start", session_id)
+    )
     semaphore = asyncio.Semaphore(plan.concurrency)
 
     async def one(slot: int) -> RequestResult:
@@ -130,24 +150,31 @@ async def run_session(
                 "stream": True,
                 "stream_options": {"include_usage": True},
                 "cache_salt": new_ulid(),
+                "seed": plan.seed + slot,
             }
             keylog = (
                 root / "restricted" / session_id / "keylogs" / f"{request_id}.keylog"
                 if plan.validation
                 else None
             )
-            return await request(
-                host, port, body, ca_file, request_id=request_id, keylog_file=keylog
-            )
+            try:
+                return await request(
+                    host, port, body, ca_file, request_id=request_id, keylog_file=keylog
+                )
+            finally:
+                if keylog is not None and keylog.exists():
+                    keylog.chmod(0o640)
 
     results: list[RequestResult | BaseException] = []
+    capture_stop: CaptureMetadata | None = None
     try:
         results = await asyncio.gather(
             *(one(slot) for slot in range(plan.requests)), return_exceptions=True
         )
     finally:
-        if capture_started:
+        capture_stop = CaptureMetadata.model_validate(
             await capture_control(b"/capture/stop", session_id)
+        )
     requests: list[dict[str, object]] = []
     events: list[dict[str, object]] = []
     reads: list[dict[str, object]] = []
@@ -160,6 +187,8 @@ async def run_session(
             failures += 1
             continue
         request_ids.add(result.request_id)
+        if result.status != 200:
+            failures += 1
         requests.append(
             {
                 "request_id": result.request_id,
@@ -218,24 +247,50 @@ async def run_session(
     )
     _write_parquet(session / "oracle" / "client_reads.parquet", "client_reads", session_id, reads)
     _write_parquet(session / "observer" / "flow_hints.parquet", "flow_hints", session_id, hints)
+    (session / "observer").chmod(0o775)
     _write_parquet(root / "restricted" / session_id / "text.parquet", "text", session_id, text)
     _collect_emissions(root, session_id, request_ids)
-    git_commit, git_dirty = _git_state()
+    environment = {
+        "client_host": host,
+        "kernel": platform.release(),
+        "cpu": platform.processor(),
+        "python": platform.python_version(),
+        "openssl": ssl.OPENSSL_VERSION,
+        "uvloop": version("uvloop") if platform.system() == "Linux" else "unavailable",
+        "capture_interface": capture_start.interface,
+        "capture_mtu": capture_start.mtu,
+        "capture_offloads": capture_stop.offloads,
+        "capture_command": " ".join(capture_stop.command),
+    }
+    environment.update(provenance.environment)
     manifest = RunManifest(
         session_id=session_id,
         experiment_id=plan.experiment_id,
-        config_sha256=sha256_bytes(plan.model_dump_json().encode()),
+        config_sha256=experiment.sha256()
+        if experiment is not None
+        else sha256_bytes(plan.model_dump_json().encode()),
         plan_sha256=sha256_bytes(plan.model_dump_json().encode()),
-        git_commit=git_commit,
-        git_dirty=git_dirty,
+        git_commit=provenance.git_commit,
+        git_dirty=provenance.git_dirty,
+        image_digests=provenance.image_digests,
+        vllm_version=provenance.vllm_version,
         model_id=plan.model,
+        model_revision=provenance.model_revision,
+        tokenizer_revision=provenance.tokenizer_revision,
         workload_version="synthetic-validation-v1",
-        workload_sha256=sha256_bytes(b"synthetic-validation-v1"),
-        policy_set_sha256=sha256_bytes(b"a0:passthrough"),
-        seeds={"plan": plan.seed},
+        workload_sha256=sha256_bytes(
+            "\n".join(
+                f"Explain a simple synthetic topic {slot}." for slot in range(plan.requests)
+            ).encode()
+        ),
+        policy_set_sha256=sha256_bytes(
+            json.dumps([policy.model_dump() for policy in policies], sort_keys=True).encode()
+        ),
+        policies=policies,
+        seeds={"plan": plan.seed, "model": 0},
         stream_interval=1,
         concurrency=plan.concurrency,
-        environment={"client_host": host},
+        environment=environment,
         timing={
             "start_realtime_ns": started,
             "start_monotonic_ns": start_mono,
@@ -243,8 +298,11 @@ async def run_session(
             "end_monotonic_ns": time.monotonic_ns(),
         },
         planned=plan.requests,
-        completed=len(requests),
+        completed=sum(
+            result.status == 200 for result in results if isinstance(result, RequestResult)
+        ),
         failed=failures,
+        capture_drops=capture_stop.kernel_drops,
         status=SessionStatus.PARTIAL,
         reasons=["Reconstruction and independent validation pending"],
     )
@@ -255,5 +313,5 @@ async def run_session(
 async def run_plan(path: Path, root: Path, host: str, ca_file: str | None) -> None:
     config = ExperimentConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
     for plan in config.sessions:
-        session_id = await run_session(plan, root, host=host, ca_file=ca_file)
+        session_id = await run_session(plan, root, host=host, ca_file=ca_file, experiment=config)
         print(session_id)

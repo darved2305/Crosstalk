@@ -42,15 +42,20 @@ services:
     volumes:
       - ../../artifacts:/artifacts
       - ../../.secrets/lab.crt:/run/secrets/lab.crt:ro
+    environment:
+      CT_PROVENANCE_FILE: /artifacts/lab/provenance.json
     networks: [edge]
     depends_on:
       shaper:
         condition: service_healthy
+      shaper-netinit:
+        condition: service_completed_successfully
   capture:
     build:
       context: ../..
       dockerfile: services/capture/Dockerfile
     network_mode: service:loadgen
+    user: "0:${CT_GID:-1000}"
     cap_drop: [ALL]
     cap_add: [NET_RAW, NET_ADMIN]
     security_opt: [no-new-privileges:true]
@@ -83,6 +88,11 @@ services:
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
     networks: [backend]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
   vllm:
     profiles: [gpu]
     image: vllm/vllm-openai:v0.29.0

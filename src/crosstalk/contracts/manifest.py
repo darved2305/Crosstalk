@@ -2,7 +2,7 @@ from enum import StrEnum
 
 from pydantic import Field
 
-from crosstalk.contracts.config import StrictModel
+from crosstalk.contracts.config import PolicyConfig, StrictModel
 
 
 class SessionStatus(StrEnum):
@@ -26,6 +26,7 @@ class RunManifest(StrictModel):
     workload_version: str
     workload_sha256: str
     policy_set_sha256: str
+    policies: list[PolicyConfig] = Field(default_factory=list[PolicyConfig])
     seeds: dict[str, int]
     stream_interval: int
     concurrency: int
