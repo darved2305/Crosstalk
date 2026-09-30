@@ -1,17 +1,19 @@
 import asyncio
-import os
 import signal
 import socket
 import ssl
 import time
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 
 import aiohttp
 import h11
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from crosstalk.common.errors import ConfigError, UpstreamError, ValidationError
+from crosstalk.common.ids import new_ulid
 from crosstalk.contracts.config import Mode
 from crosstalk.shaper.accounting import Emission, EmissionWriter
 from crosstalk.shaper.framer import framed_segments, terminator
@@ -30,8 +32,21 @@ class ShaperSettings(BaseSettings):
     upstream_url: str = "http://vllm:8000"
     mode: Mode = Mode.LAB
     oracle_dir: Path = Path("artifacts/shaper-log")
-    stall_timeout: float = 30.0
-    write_high_water: int = 65_536
+    stall_timeout: float = Field(default=30.0, gt=0)
+    write_high_water: int = Field(default=65_536, ge=16_384, le=1_048_576)
+
+
+@dataclass(slots=True)
+class ShaperMetrics:
+    active_connections: int = 0
+    peak_connections: int = 0
+    peak_write_buffer_bytes: int = 0
+    stall_timeouts: int = 0
+
+    def observe_buffer(self, writer: asyncio.StreamWriter) -> None:
+        self.peak_write_buffer_bytes = max(
+            self.peak_write_buffer_bytes, writer.transport.get_write_buffer_size()
+        )
 
 
 def tls_context(settings: ShaperSettings) -> ssl.SSLContext:
@@ -68,8 +83,15 @@ async def _read_request(reader: asyncio.StreamReader) -> tuple[h11.Request, byte
             return request, bytes(body)
 
 
-async def _drain(writer: asyncio.StreamWriter, timeout: float) -> None:
-    await asyncio.wait_for(writer.drain(), timeout=timeout)
+async def _drain(
+    writer: asyncio.StreamWriter, timeout: float, metrics: ShaperMetrics | None = None
+) -> None:
+    try:
+        await asyncio.wait_for(writer.drain(), timeout=timeout)
+    except TimeoutError:
+        if metrics is not None:
+            metrics.stall_timeouts += 1
+        raise
 
 
 async def handle_connection(
@@ -78,6 +100,7 @@ async def handle_connection(
     settings: ShaperSettings,
     upstream: aiohttp.ClientSession,
     emissions: EmissionWriter,
+    metrics: ShaperMetrics | None = None,
 ) -> None:
     sock = writer.get_extra_info("socket")
     if sock is None:
@@ -103,7 +126,7 @@ async def handle_connection(
             if response.status != 200:
                 raise UpstreamError(f"Upstream returned {response.status}")
             writer.write(response_headers(200))
-            await _drain(writer, settings.stall_timeout)
+            await _drain(writer, settings.stall_timeout, metrics)
             headers_sent = True
             parser = SSEParser()
             done = False
@@ -125,6 +148,8 @@ async def handle_connection(
                     for segment in framed_segments(event.raw):
                         t_emit = time.monotonic_ns()
                         transport.write(segment)
+                        if metrics is not None:
+                            metrics.observe_buffer(writer)
                         await emissions.record(
                             Emission(
                                 request_id,
@@ -142,11 +167,13 @@ async def handle_connection(
                         )
                         sequence += 1
                         if transport.get_write_buffer_size() >= settings.write_high_water:
-                            await _drain(writer, settings.stall_timeout)
+                            await _drain(writer, settings.stall_timeout, metrics)
                 if done:
                     break
             final = terminator()
             transport.write(final)
+            if metrics is not None:
+                metrics.observe_buffer(writer)
             await emissions.record(
                 Emission(
                     request_id,
@@ -162,7 +189,7 @@ async def handle_connection(
                     "a0",
                 )
             )
-            await _drain(writer, settings.stall_timeout)
+            await _drain(writer, settings.stall_timeout, metrics)
     except (
         ConfigError,
         ValidationError,
@@ -206,12 +233,12 @@ async def handle_connection(
             await asyncio.wait_for(writer.wait_closed(), timeout=5)
 
 
-async def run(settings: ShaperSettings) -> None:
+async def run(settings: ShaperSettings, metrics: ShaperMetrics | None = None) -> None:
     context = tls_context(settings)
     active: set[asyncio.Task[None]] = set()
     shutdown = asyncio.Event()
     async with (
-        EmissionWriter(settings.oracle_dir / f"{os.getpid()}-0.ndjson") as emissions,
+        EmissionWriter(settings.oracle_dir / f"{new_ulid()}.ndjson") as emissions,
         aiohttp.ClientSession() as upstream,
     ):
 
@@ -219,11 +246,16 @@ async def run(settings: ShaperSettings) -> None:
             task = asyncio.current_task()
             if task is not None:
                 active.add(task)
+            if metrics is not None:
+                metrics.active_connections += 1
+                metrics.peak_connections = max(metrics.peak_connections, metrics.active_connections)
             try:
                 await handle_connection(reader, writer, settings, upstream, emissions)
             finally:
                 if task is not None:
                     active.discard(task)
+                if metrics is not None:
+                    metrics.active_connections -= 1
 
         async def admin(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             line = await reader.readline()
