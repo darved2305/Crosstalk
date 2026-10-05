@@ -48,14 +48,13 @@ def parse_records(stream: TCPStream) -> list[TLSRecord]:
 def classify_records(
     client: list[TLSRecord], server: list[TLSRecord]
 ) -> tuple[list[str], list[str]]:
-    client_finished = next((r.end_ns for r in client if r.content_type == 23), None)
-    first_request = next(
-        (
-            r.end_ns
-            for r in client
-            if r.content_type == 23 and client_finished is not None and r.end_ns > client_finished
-        ),
-        None,
+    # Stream order, not timestamps: the client Finished and the first request record can
+    # complete in the same segment and therefore carry the same timestamp.
+    finished = next((index for index, r in enumerate(client) if r.content_type == 23), None)
+    first_request = (
+        next((r.end_ns for r in client[finished + 1 :] if r.content_type == 23), None)
+        if finished is not None
+        else None
     )
     client_labels: list[str] = []
     seen_finished = False

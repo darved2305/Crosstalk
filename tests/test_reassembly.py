@@ -3,7 +3,7 @@ from hypothesis import strategies as st
 
 from crosstalk.capture.packet import TCPPacket
 from crosstalk.capture.tcp import FIN, SYN, TCPStream
-from crosstalk.capture.tls import parse_records
+from crosstalk.capture.tls import TLSRecord, classify_records, parse_records
 from crosstalk.common.errors import ReconstructionError
 
 
@@ -85,3 +85,32 @@ def test_tls_record_completion() -> None:
         raise AssertionError("Invalid header accepted")
     except ReconstructionError:
         pass
+
+
+def _record(index: int, content_type: int, length: int, end_ns: int) -> TLSRecord:
+    return TLSRecord(index, 0, content_type, length, end_ns, end_ns, 0)
+
+
+def test_phases_when_finished_and_request_share_a_timestamp() -> None:
+    client = [
+        _record(0, 22, 512, 1),
+        _record(1, 20, 1, 1),
+        _record(2, 23, 53, 5),
+        _record(3, 23, 300, 5),
+    ]
+    server = [
+        _record(0, 22, 90, 3),
+        _record(1, 20, 1, 3),
+        _record(2, 23, 900, 3),
+        _record(3, 23, 120, 7),
+        _record(4, 23, 19, 9),
+    ]
+    client_phases, server_phases = classify_records(client, server)
+    assert client_phases == ["handshake", "handshake", "handshake", "request"]
+    assert server_phases == ["handshake", "handshake", "handshake", "response", "probable_alert"]
+
+
+def test_phases_without_a_request() -> None:
+    client = [_record(0, 22, 512, 1), _record(1, 23, 53, 5)]
+    server = [_record(0, 22, 90, 3), _record(1, 23, 120, 7)]
+    assert classify_records(client, server)[1] == ["handshake", "handshake"]
