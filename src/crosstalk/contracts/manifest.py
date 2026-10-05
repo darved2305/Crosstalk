@@ -30,6 +30,8 @@ class RunManifest(StrictModel):
     seeds: dict[str, int]
     stream_interval: int
     concurrency: int
+    # One entry per concurrency block: index, level, slots and monotonic start/end.
+    blocks: list[dict[str, int]] = Field(default_factory=list[dict[str, int]])
     environment: dict[str, str | int | bool]
     timing: dict[str, int]
     planned: int

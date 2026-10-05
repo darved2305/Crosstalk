@@ -1,3 +1,4 @@
+import itertools
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -170,13 +171,16 @@ def test_block_randomization(corpus: Corpus) -> None:
             if row["block"] == block:
                 by_class[row["class"]].add(row["prompt_id"])
         assert all(len(prompts) == 1 for prompts in by_class.values())
-    after_warmup = rows[3:]
-    probes = [index for index, row in enumerate(after_warmup) if row["role"] == "determinism"]
-    assert (
-        probes
-        == [index for index in range(len(after_warmup)) if (index + 1) % 25 == 0][: len(probes)]
-    )
-    assert len(probes) >= len(main) // 25
+    # One probe immediately before every 25th main slot.
+    mains_before: list[int] = []
+    seen = 0
+    for row in rows:
+        if row["role"] == "main":
+            seen += 1
+        elif row["role"] == "determinism":
+            mains_before.append(seen)
+    assert mains_before == [25 * k - 1 for k in range(1, len(mains_before) + 1)]
+    assert len(mains_before) == len(main) // 25
     assert all(is_ulid(str(row["request_id"])) for row in rows)
     assert len({row["request_id"] for row in rows}) == len(rows)
     assert all(SEED_LOW <= int(str(row["seed"])) <= SEED_HIGH for row in rows)
@@ -296,7 +300,7 @@ def test_experiment_configs_parse(path: Path) -> None:
     assert all(session.experiment_id == config.name for session in config.sessions)
 
 
-@pytest.mark.parametrize("name", ["e1-pilot.yaml", "e1.yaml"])
+@pytest.mark.parametrize("name", ["e1-pilot.yaml", "e1.yaml", "e2.yaml"])
 def test_experiment_policies_match_the_shaper_policy_file(name: str) -> None:
     from crosstalk.contracts.config import ExperimentConfig, PolicyConfig
 
@@ -311,3 +315,93 @@ def test_experiment_policies_match_the_shaper_policy_file(name: str) -> None:
         )
     ]
     assert sorted(config.policy_set, key=lambda p: p.arm) == sorted(shaper, key=lambda p: p.arm)
+
+
+def _e2(**overrides: object) -> SessionPlan:
+    values: dict[str, object] = {
+        "concurrency_levels": [1, 8, 32],
+        "concurrency": 32,
+        "cycles": 2,
+        "per_class": 4,
+        "arms": ["a0", "a1", "a2"],
+        "stream_interval_variants": [4],
+        "warmup": 2,
+        "determinism_every": 0,
+    }
+    values.update(overrides)
+    return _plan(**values)
+
+
+def test_e2_blocks_alternate_and_drain_order(corpus: Corpus) -> None:
+    planned = plan_session(_e2(), corpus)
+    rows = planned.rows
+    blocks: list[tuple[int, int]] = []
+    for row in rows:
+        key = (int(str(row["cblock"])), int(str(row["block_concurrency"])))
+        if not blocks or blocks[-1] != key:
+            blocks.append(key)
+    # Levels alternate in time and each concurrency block is contiguous.
+    assert blocks == [(0, 1), (1, 8), (2, 32), (3, 1), (4, 8), (5, 32)]
+    for cblock in range(6):
+        block_rows = [r for r in rows if r["cblock"] == cblock]
+        assert [r["role"] for r in block_rows[:2]] == ["warmup", "warmup"]
+        assert all(r["role"] == "main" for r in block_rows[2:])
+
+
+def test_e2_conditions_and_pairing_across_levels(corpus: Corpus) -> None:
+    plan = _e2()
+    assert plan.conditions() == [("a0", 1), ("a0", 4), ("a1", 1), ("a2", 1), ("a2", 4)]
+    planned = plan_session(plan, corpus)
+    main = [r for r in planned.rows if r["role"] == "main"]
+    counts = Counter(
+        (r["block_concurrency"], r["class"], r["arm"], r["stream_interval"]) for r in main
+    )
+    assert set(counts.values()) == {4}
+    assert len(counts) == 3 * 6 * 5
+    # Every level replays the same prompts: comparisons across load are paired by family.
+    by_level: dict[object, Counter[object]] = defaultdict(Counter)
+    for r in main:
+        by_level[r["block_concurrency"]][(r["prompt_id"], r["arm"], r["stream_interval"])] += 1
+    assert by_level[1] == by_level[8] == by_level[32]
+    # Each randomization block holds every (class, arm, interval) once.
+    for (cblock, block), group in itertools.groupby(
+        sorted(main, key=lambda r: (int(str(r["cblock"])), int(str(r["block"])))),
+        key=lambda r: (r["cblock"], r["block"]),
+    ):
+        combos = Counter((r["class"], r["arm"], r["stream_interval"]) for r in group)
+        assert len(combos) == 30 and set(combos.values()) == {1}, (cblock, block)
+    bodies = {
+        encode_body(request_body(r, planned.texts[str(r["request_id"])], "m")).count(
+            b'"stream_interval":4'
+        )
+        for r in main
+        if r["stream_interval"] == 4
+    }
+    assert bodies == {1}
+    assert all(r["arm"] in ("a0", "a2") for r in main if r["stream_interval"] == 4)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"concurrency": 8}, "highest concurrency"),
+        ({"concurrency_levels": [1, 1, 32]}, "duplicates"),
+        ({"concurrency_levels": [0, 32]}, r"\[1, 256\]"),
+        ({"per_class": 5}, "multiple of cycles"),
+        ({"stream_interval_variants": [1]}, "repeats the base"),
+        ({"stream_interval_variants": [4, 4]}, "duplicates"),
+        ({"stream_interval_variants": [99]}, r"\[1, 64\]"),
+        ({"arms": ["a1", "a3"], "stream_interval_variants": [4]}, "none of the session arms"),
+        ({"arms": ["a0", "a0"]}, "duplicates"),
+        ({"classes": ["medical"]}, "two classes"),
+        ({"target_lengths": [96, 96]}, "duplicates"),
+    ],
+)
+def test_e2_config_edge_cases(overrides: dict[str, object], message: str) -> None:
+    with pytest.raises(PydanticValidationError, match=message):
+        _e2(**overrides)
+
+
+def test_synthetic_sessions_reject_e2_options() -> None:
+    with pytest.raises(PydanticValidationError, match="synthetic"):
+        SessionPlan(experiment_id="v", requests=5, concurrency=8, seed=1, concurrency_levels=[1, 8])

@@ -122,6 +122,7 @@ SCHEMAS: Mapping[str, pa.Schema] = {
         [
             ("slot", I32),
             ("block", I32),
+            ("cblock", I32),
             ("block_concurrency", I32),
             ("request_id", S),
             ("prompt_id", S),
@@ -151,6 +152,9 @@ SCHEMAS: Mapping[str, pa.Schema] = {
             ("regime", S),
             ("role", S),
             ("arm", S),
+            ("concurrency", I32),
+            ("stream_interval", I32),
+            ("cblock", I32),
             ("prompt_bucket", I32),
             ("target_len", I32),
             ("t2_sensitive", B),
@@ -164,6 +168,7 @@ SCHEMAS: Mapping[str, pa.Schema] = {
         [
             ("request_id", S),
             ("regime", S),
+            ("concurrency", I32),
             ("task", S),
             ("representation", S),
             ("fold", I32),
@@ -179,6 +184,7 @@ SCHEMAS: Mapping[str, pa.Schema] = {
         [
             ("experiment_id", S),
             ("regime", S),
+            ("concurrency", I32),
             ("task", S),
             ("representation", S),
             ("arm", S),
@@ -191,6 +197,24 @@ SCHEMAS: Mapping[str, pa.Schema] = {
             ("n", I32),
             ("n_families", I32),
             ("B", I32),
+        ]
+    ),
+    # Experiment-level like evaluations: session_id is null (the point pools sessions).
+    "frontier": _schema(
+        [
+            ("experiment_id", S),
+            ("concurrency", I32),
+            ("condition", S),
+            ("setting", S),
+            ("model", S),
+            ("representation", S),
+            ("balanced_accuracy", F32),
+            ("rho", F32),
+            ("rho_lo", F32),
+            ("rho_hi", F32),
+            ("bandwidth_overhead_pct", F32),
+            ("ttft_p95_ms", F32),
+            ("itl_p99_ms", F32),
         ]
     ),
 }

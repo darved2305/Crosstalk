@@ -44,6 +44,9 @@ def request_body(row: dict[str, object], text: str, model: str) -> dict[str, obj
     }
     if row["min_tokens"] is not None:
         body["min_tokens"] = row["min_tokens"]
+    # vLLM raises its server-side aggregation to this many tokens for this request; the
+    # first and last chunks are always sent immediately.
+    body["stream_interval"] = row["stream_interval"]
     return body
 
 
@@ -151,17 +154,27 @@ def plan_session(plan: SessionPlan, corpus: Corpus | None) -> PlannedSession:
     probe = _cycle(sorted(determinism, key=lambda p: str(p["prompt_id"])), rng)
     probe_target = min(plan.target_lengths) if plan.regime is Regime.MATCH_PR else None
 
-    def add(prompt: dict[str, object], arm: str, role: str, block: int, target: int | None) -> None:
+    def add(
+        prompt: dict[str, object],
+        arm: str,
+        interval: int,
+        role: str,
+        block: int,
+        cblock: int,
+        level: int,
+        target: int | None,
+    ) -> None:
         request_id = new_ulid()
         tokens = prompt["padded_tokens"] if matched else prompt["n_tokens"]
         row: dict[str, object] = {
             "slot": len(rows),
             "block": block,
-            "block_concurrency": plan.concurrency,
+            "cblock": cblock,
+            "block_concurrency": level,
             "request_id": request_id,
             "prompt_id": prompt["prompt_id"],
             "arm": arm,
-            "stream_interval": plan.stream_interval,
+            "stream_interval": interval,
             "regime": plan.regime.value,
             "role": role,
             "temperature": plan.temperature,
@@ -178,16 +191,53 @@ def plan_session(plan: SessionPlan, corpus: Corpus | None) -> PlannedSession:
         rows.append(row)
         texts[request_id] = str(prompt["padded_text"] if matched else prompt["text"])
 
-    for _ in range(plan.warmup):
-        add(next(probe), arms[0], "warmup", 0, probe_target)
-    for block in range(plan.per_class):
-        combos = [(klass, arm) for klass in classes for arm in arms]
-        rng.shuffle(combos)
-        for klass, arm in combos:
-            every = plan.determinism_every
-            if every and (len(rows) - plan.warmup + 1) % every == 0:
-                add(next(probe), arms[0], "determinism", block, probe_target)
-            add(draws[klass][block], arm, "main", block, targets[block])
+    conditions = plan.conditions()
+    per_cycle = plan.per_class // plan.cycles
+    probes_placed = 0
+    cblock = 0
+    # Each concurrency level replays the same prompts (paired by family across levels);
+    # cycles repeat the level sequence so load is never confounded with session time.
+    for cycle in range(plan.cycles):
+        for level in plan.levels:
+            for _ in range(plan.warmup):
+                add(
+                    next(probe),
+                    arms[0],
+                    plan.stream_interval,
+                    "warmup",
+                    0,
+                    cblock,
+                    level,
+                    probe_target,
+                )
+            for block in range(cycle * per_cycle, (cycle + 1) * per_cycle):
+                combos = [(klass, arm, si) for klass in classes for arm, si in conditions]
+                rng.shuffle(combos)
+                for klass, arm, interval in combos:
+                    every = plan.determinism_every
+                    probes_placed += 1
+                    if every and probes_placed % every == 0:
+                        add(
+                            next(probe),
+                            arms[0],
+                            plan.stream_interval,
+                            "determinism",
+                            block,
+                            cblock,
+                            level,
+                            probe_target,
+                        )
+                    add(
+                        draws[klass][block],
+                        arm,
+                        interval,
+                        "main",
+                        block,
+                        cblock,
+                        level,
+                        targets[block],
+                    )
+            cblock += 1
     return PlannedSession(rows, texts)
 
 
@@ -202,6 +252,7 @@ def _synthetic(plan: SessionPlan) -> PlannedSession:
             {
                 "slot": slot,
                 "block": 0,
+                "cblock": 0,
                 "block_concurrency": plan.concurrency,
                 "request_id": request_id,
                 "prompt_id": f"synthetic-{slot:06d}",

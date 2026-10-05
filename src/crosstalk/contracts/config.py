@@ -72,8 +72,15 @@ class SessionPlan(StrictModel):
     temperature: float = Field(default=0.7, ge=0, le=2)
     target_lengths: list[int] = Field(default_factory=lambda: [96, 160, 224], min_length=1)
     determinism_every: int = Field(default=25, ge=0)
+    # Warmup slots at the start of every concurrency block; excluded from analysis.
     warmup: int = Field(default=30, ge=0)
-    stream_interval: int = Field(default=1, ge=1)
+    stream_interval: int = Field(default=1, ge=1, le=64)
+    # E2: time-alternating concurrency blocks (each level once per cycle, drained between
+    # blocks) and extra vLLM stream intervals for selected arms.
+    concurrency_levels: list[int] | None = None
+    cycles: int = Field(default=1, ge=1, le=100)
+    stream_interval_variants: list[int] = Field(default_factory=lambda: [])
+    stream_interval_arms: list[str] = Field(default_factory=lambda: ["a0", "a2"])
 
     @model_validator(mode="after")
     def check_source(self) -> "SessionPlan":
@@ -85,13 +92,59 @@ class SessionPlan(StrictModel):
             # Lengths are assigned identically across classes, so a length-dependent body
             # width never correlates with the class.
             raise ValueError("target lengths must be positive and within the token cap")
+        for name, values in (
+            ("arms", self.session_arms),
+            ("classes", self.classes or []),
+            ("target_lengths", self.target_lengths),
+            ("concurrency_levels", self.concurrency_levels or []),
+            ("stream_interval_variants", self.stream_interval_variants),
+            ("stream_interval_arms", self.stream_interval_arms),
+        ):
+            if len(set(values)) != len(values):
+                raise ValueError(f"{name} contains duplicates")
+        if self.classes is not None and len(self.classes) < 2:
+            raise ValueError("at least two classes are needed")
         for arm in self.session_arms:
             PolicyConfig(arm=arm)
+        if self.concurrency_levels is not None:
+            if not self.concurrency_levels or any(
+                not 1 <= level <= 256 for level in self.concurrency_levels
+            ):
+                raise ValueError("concurrency levels must lie in [1, 256]")
+            if self.concurrency != max(self.concurrency_levels):
+                raise ValueError("concurrency must equal the highest concurrency level")
+        if any(not 1 <= value <= 64 for value in self.stream_interval_variants):
+            raise ValueError("stream interval variants must lie in [1, 64]")
+        if self.stream_interval in self.stream_interval_variants:
+            raise ValueError("a stream interval variant repeats the base interval")
+        if self.stream_interval_variants and not set(self.stream_interval_arms) & set(
+            self.session_arms
+        ):
+            raise ValueError("stream interval variants apply to none of the session arms")
+        if self.requests is not None and (
+            self.concurrency_levels is not None or self.stream_interval_variants or self.cycles > 1
+        ):
+            raise ValueError("synthetic sessions support neither E2 blocks nor variants")
+        if self.per_class is not None and self.per_class % self.cycles:
+            raise ValueError("per_class must be a multiple of cycles")
         return self
 
     @property
     def session_arms(self) -> list[str]:
         return self.arms if self.arms is not None else [self.arm]
+
+    @property
+    def levels(self) -> list[int]:
+        return self.concurrency_levels or [self.concurrency]
+
+    def conditions(self) -> list[tuple[str, int]]:
+        """(arm, stream interval) pairs, each placed once per randomization block."""
+        result: list[tuple[str, int]] = []
+        for arm in self.session_arms:
+            result.append((arm, self.stream_interval))
+            if arm in self.stream_interval_arms:
+                result.extend((arm, value) for value in self.stream_interval_variants)
+        return result
 
 
 class AnalysisConfig(StrictModel):

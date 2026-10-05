@@ -3,6 +3,7 @@ import asyncio
 import functools
 import json
 import time
+from dataclasses import dataclass
 from typing import cast
 
 import h11
@@ -37,11 +38,33 @@ def echo_plan(payload: dict[str, object]) -> list[str]:
     return [words[index % len(words)] + " " for index in range(count)]
 
 
+@dataclass(slots=True)
+class Engine:
+    """Shared state of one mock server: how many echo streams are generating right now.
+
+    With ``load_factor`` > 0 every token takes ``1 + load_factor * (active - 1)`` times its
+    base delay, a crude stand-in for continuous batching slowing each stream under load.
+    """
+
+    load_factor: float = 0.0
+    active: int = 0
+
+    def slowdown(self) -> float:
+        return 1.0 + self.load_factor * max(self.active - 1, 0)
+
+
+def stream_interval(payload: dict[str, object]) -> int:
+    value = payload.get("stream_interval", 1)
+    return value if isinstance(value, int) and value >= 1 else 1
+
+
 async def _handle(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     token_delay_ms: float = ECHO_TOKEN_DELAY_MS,
+    engine: Engine | None = None,
 ) -> None:
+    engine = engine or Engine()
     connection = h11.Connection(h11.SERVER)
     request: h11.Request | None = None
     body = bytearray()
@@ -112,13 +135,26 @@ async def _handle(
 
         if echo:
             await send({"delta": {"role": "assistant", "content": ""}, "finish_reason": None})
-        for index, text in enumerate(tokens):
-            await send(
-                {"delta": {"content": text}, "finish_reason": None},
-                mock_sent_ns=time.monotonic_ns(),
-            )
-            if delays[index] and index < n - 1:
-                await asyncio.sleep(delays[index])
+        # vLLM semantics: the first token goes alone, later ones in groups of the stream
+        # interval, and whatever is left goes out as soon as generation ends.
+        interval = stream_interval(payload) if echo else 1
+        buffered: list[str] = []
+        if echo:
+            engine.active += 1
+        try:
+            for index, text in enumerate(tokens):
+                buffered.append(text)
+                if index == 0 or len(buffered) == interval or index == n - 1:
+                    await send(
+                        {"delta": {"content": "".join(buffered)}, "finish_reason": None},
+                        mock_sent_ns=time.monotonic_ns(),
+                    )
+                    buffered.clear()
+                if delays[index] and index < n - 1:
+                    await asyncio.sleep(delays[index] * (engine.slowdown() if echo else 1.0))
+        finally:
+            if echo:
+                engine.active -= 1
         if echo:
             await send(
                 {"delta": {}, "finish_reason": "length" if payload.get("min_tokens") else "stop"}
@@ -146,9 +182,12 @@ async def _handle(
 
 
 async def run(
-    host: str = "0.0.0.0", port: int = 8000, token_delay_ms: float = ECHO_TOKEN_DELAY_MS
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    token_delay_ms: float = ECHO_TOKEN_DELAY_MS,
+    load_factor: float = 0.0,
 ) -> None:
-    handler = functools.partial(_handle, token_delay_ms=token_delay_ms)
+    handler = functools.partial(_handle, token_delay_ms=token_delay_ms, engine=Engine(load_factor))
     server = await asyncio.start_server(handler, host, port)
     async with server:
         await server.serve_forever()
@@ -159,5 +198,8 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--token-delay-ms", type=float, default=ECHO_TOKEN_DELAY_MS)
+    parser.add_argument("--load-factor", type=float, default=0.0)
     arguments = parser.parse_args()
-    asyncio.run(run(arguments.host, arguments.port, arguments.token_delay_ms))
+    asyncio.run(
+        run(arguments.host, arguments.port, arguments.token_delay_ms, arguments.load_factor)
+    )

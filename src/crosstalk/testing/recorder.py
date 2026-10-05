@@ -71,11 +71,13 @@ class RecordingRelay:
         except OSError:
             pass
         finally:
+            connection.done.set()
             for each in writers:
                 each.close()
-                with suppress(OSError):
-                    await each.wait_closed()
-            connection.done.set()
+            # Closing can wait on the peer indefinitely on Windows; the bytes are recorded.
+            with suppress(OSError, TimeoutError):
+                async with asyncio.timeout(1):
+                    await asyncio.gather(*(each.wait_closed() for each in writers))
 
     async def _pump(
         self,

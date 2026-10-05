@@ -168,9 +168,8 @@ async def run_session(
     started = time.time_ns()
     start_mono = time.monotonic_ns()
     capture_start = await capture.start(session_id)
-    semaphore = asyncio.Semaphore(plan.concurrency)
 
-    async def one(slot: dict[str, object]) -> RequestResult:
+    async def one(slot: dict[str, object], semaphore: asyncio.Semaphore) -> RequestResult:
         async with semaphore:
             request_id = str(slot["request_id"])
             body = request_body(slot, planned.texts[request_id], plan.model)
@@ -193,12 +192,35 @@ async def run_session(
                 if keylog is not None and keylog.exists():
                     keylog.chmod(0o640)
 
-    results: list[RequestResult | BaseException] = []
+    by_block: dict[int, list[int]] = {}
+    for index, slot in enumerate(slots):
+        by_block.setdefault(int(str(slot["cblock"])), []).append(index)
+    outcomes: dict[int, RequestResult | BaseException] = {}
+    blocks: list[dict[str, int]] = []
     capture_stop: CaptureMetadata | None = None
     try:
-        results = await asyncio.gather(*(one(slot) for slot in slots), return_exceptions=True)
+        # Closed loop at each block's concurrency; a block fully drains before the next.
+        for cblock in sorted(by_block):
+            indices = by_block[cblock]
+            level = int(str(slots[indices[0]]["block_concurrency"]))
+            semaphore = asyncio.Semaphore(level)
+            block_start = time.monotonic_ns()
+            done = await asyncio.gather(
+                *(one(slots[i], semaphore) for i in indices), return_exceptions=True
+            )
+            outcomes.update(zip(indices, done, strict=True))
+            blocks.append(
+                {
+                    "cblock": cblock,
+                    "concurrency": level,
+                    "slots": len(indices),
+                    "start_monotonic_ns": block_start,
+                    "end_monotonic_ns": time.monotonic_ns(),
+                }
+            )
     finally:
         capture_stop = await capture.stop(session_id)
+    results = [outcomes.get(index, CaptureError("Slot did not run")) for index in range(len(slots))]
     requests: list[dict[str, object]] = []
     events: list[dict[str, object]] = []
     reads: list[dict[str, object]] = []
@@ -291,6 +313,9 @@ async def run_session(
             "regime": slot["regime"],
             "role": slot["role"],
             "arm": slot["arm"],
+            "concurrency": slot["block_concurrency"],
+            "stream_interval": slot["stream_interval"],
+            "cblock": slot["cblock"],
             "prompt_bucket": slot["prompt_bucket"],
             "target_len": slot["target_len"],
             "t2_sensitive": slot["t2_sensitive"],
@@ -345,6 +370,7 @@ async def run_session(
         seeds={"plan": plan.seed, "model": 0},
         stream_interval=plan.stream_interval,
         concurrency=plan.concurrency,
+        blocks=blocks,
         environment=environment,
         timing={
             "start_realtime_ns": started,
