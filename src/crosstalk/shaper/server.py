@@ -3,6 +3,7 @@ import signal
 import socket
 import ssl
 import time
+from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,10 +15,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from crosstalk.common.errors import ConfigError, UpstreamError, ValidationError
 from crosstalk.common.ids import new_ulid
-from crosstalk.contracts.config import Mode
+from crosstalk.contracts.config import Mode, PolicyConfig
 from crosstalk.shaper.accounting import Emission, EmissionWriter
+from crosstalk.shaper.emitter import EmitterLimits, StallTimeout, StreamEmitter, Transport
+from crosstalk.shaper.events import UpstreamEvent, classify
 from crosstalk.shaper.framer import framed_segments, terminator
 from crosstalk.shaper.http1 import MAX_BODY, response_headers, validate_request
+from crosstalk.shaper.policies import build_policy
 from crosstalk.shaper.sse import SSEParser
 
 
@@ -34,6 +38,27 @@ class ShaperSettings(BaseSettings):
     oracle_dir: Path = Path("artifacts/shaper-log")
     stall_timeout: float = Field(default=30.0, gt=0)
     write_high_water: int = Field(default=65_536, ge=16_384, le=1_048_576)
+    policy_file: Path | None = None
+    default_arm: str = "a0"
+
+
+def load_policies(settings: ShaperSettings) -> dict[str, PolicyConfig]:
+    """Policy set fixed for the process lifetime; a change means a new process."""
+    if settings.policy_file is None:
+        configs = [PolicyConfig()]
+    else:
+        import yaml
+
+        raw = yaml.safe_load(settings.policy_file.read_text(encoding="utf-8"))
+        configs = [PolicyConfig.model_validate(item) for item in raw]
+    policies = {config.arm: config for config in configs}
+    if len(policies) != len(configs):
+        raise ConfigError("Policy set contains a duplicate arm")
+    if settings.default_arm not in policies:
+        raise ConfigError("The default arm is not in the policy set")
+    for config in configs:
+        build_policy(config)
+    return policies
 
 
 @dataclass(slots=True)
@@ -83,15 +108,11 @@ async def _read_request(reader: asyncio.StreamReader) -> tuple[h11.Request, byte
             return request, bytes(body)
 
 
-async def _drain(
-    writer: asyncio.StreamWriter, timeout: float, metrics: ShaperMetrics | None = None
-) -> None:
+async def _drain(writer: asyncio.StreamWriter, timeout: float) -> None:
     try:
         await asyncio.wait_for(writer.drain(), timeout=timeout)
     except TimeoutError:
-        if metrics is not None:
-            metrics.stall_timeouts += 1
-        raise
+        raise StallTimeout(f"Client stalled for {timeout} s") from None
 
 
 async def handle_connection(
@@ -101,7 +122,9 @@ async def handle_connection(
     upstream: aiohttp.ClientSession,
     emissions: EmissionWriter,
     metrics: ShaperMetrics | None = None,
+    policies: dict[str, PolicyConfig] | None = None,
 ) -> None:
+    policies = policies or {"a0": PolicyConfig()}
     sock = writer.get_extra_info("socket")
     if sock is None:
         writer.close()
@@ -112,10 +135,15 @@ async def handle_connection(
     headers_sent = False
     request_id = ""
     sequence = 0
+    arm = settings.default_arm
     try:
         request, body = await _read_request(reader)
         _, lab = validate_request(request, body, settings.mode)
         request_id = lab.request_id if lab else ""
+        arm = lab.arm if lab else settings.default_arm
+        if arm not in policies:
+            raise ConfigError(f"Unknown arm: {arm}")
+        policy = build_policy(policies[arm])
         timeout = aiohttp.ClientTimeout(total=None, connect=5)
         async with upstream.post(
             settings.upstream_url.rstrip("/") + "/v1/chat/completions",
@@ -141,56 +169,41 @@ async def handle_connection(
                     0,
                     0,
                     0,
-                    "a0",
+                    arm,
                 )
             )
             sequence += 1
-            await _drain(writer, settings.stall_timeout, metrics)
+            await _drain(writer, settings.stall_timeout)
             headers_sent = True
             parser = SSEParser()
-            done = False
-            transport = writer.transport
-            incoming = response.content.iter_any().__aiter__()
-            first_read = True
-            while True:
-                try:
-                    data = await asyncio.wait_for(
-                        anext(incoming), timeout=120 if first_read else 30
-                    )
-                except StopAsyncIteration:
-                    break
-                first_read = False
-                for event in parser.feed(data):
-                    if event.data == "[DONE]":
-                        done = True
-                        break
-                    for segment in framed_segments(event.raw):
-                        t_emit = time.monotonic_ns()
-                        transport.write(segment)
-                        if metrics is not None:
-                            metrics.observe_buffer(writer)
-                        await emissions.record(
-                            Emission(
-                                request_id,
-                                sequence,
-                                t_emit,
-                                "content",
-                                len(segment),
-                                len(event.raw),
-                                0,
-                                1,
-                                0,
-                                0,
-                                "a0",
-                            )
-                        )
-                        sequence += 1
-                        if transport.get_write_buffer_size() >= settings.write_high_water:
-                            await _drain(writer, settings.stall_timeout, metrics)
-                if done:
-                    break
+
+            async def upstream_events() -> AsyncIterator[UpstreamEvent]:
+                async for data in response.content.iter_any():
+                    for event in parser.feed(data):
+                        if event.data == "[DONE]":
+                            return
+                        yield classify(event, time.monotonic_ns())
+
+            def write(frame: bytes) -> None:
+                writer.transport.write(frame)
+                if metrics is not None:
+                    metrics.observe_buffer(writer)
+
+            emitter = StreamEmitter(
+                policy,
+                Transport(write, writer.transport.get_write_buffer_size, writer.drain),
+                emissions,
+                request_id,
+                arm,
+                sequence,
+                EmitterLimits(settings.stall_timeout, settings.write_high_water),
+            )
+            try:
+                await emitter.run(upstream_events())
+            finally:
+                sequence = emitter.sequence
             final = terminator()
-            transport.write(final)
+            writer.transport.write(final)
             if metrics is not None:
                 metrics.observe_buffer(writer)
             await emissions.record(
@@ -205,10 +218,10 @@ async def handle_connection(
                     0,
                     0,
                     0,
-                    "a0",
+                    arm,
                 )
             )
-            await _drain(writer, settings.stall_timeout, metrics)
+            await _drain(writer, settings.stall_timeout)
     except (
         ConfigError,
         ValidationError,
@@ -219,6 +232,10 @@ async def handle_connection(
         if not headers_sent:
             writer.write(response_headers(400))
             writer.write(b"0\r\n\r\n")
+    except StallTimeout:
+        # The client stopped reading; writing an error event would only queue more bytes.
+        if metrics is not None:
+            metrics.stall_timeouts += 1
     except (aiohttp.ClientError, TimeoutError, UpstreamError):
         if not headers_sent:
             writer.write(response_headers(502))
@@ -241,7 +258,7 @@ async def handle_connection(
                         0,
                         0,
                         0,
-                        "a0",
+                        arm,
                     )
                 )
                 sequence += 1
@@ -254,6 +271,7 @@ async def handle_connection(
 
 async def run(settings: ShaperSettings, metrics: ShaperMetrics | None = None) -> None:
     context = tls_context(settings)
+    policies = load_policies(settings)
     active: set[asyncio.Task[None]] = set()
     shutdown = asyncio.Event()
     async with (
@@ -269,7 +287,9 @@ async def run(settings: ShaperSettings, metrics: ShaperMetrics | None = None) ->
                 metrics.active_connections += 1
                 metrics.peak_connections = max(metrics.peak_connections, metrics.active_connections)
             try:
-                await handle_connection(reader, writer, settings, upstream, emissions)
+                await handle_connection(
+                    reader, writer, settings, upstream, emissions, metrics, policies
+                )
             finally:
                 if task is not None:
                     active.discard(task)

@@ -25,8 +25,6 @@ def validate_request(
     lab = None
     if lab_arm is not None and lab_rid is not None:
         lab = LabHeaders(arm=lab_arm.decode("ascii"), request_id=lab_rid.decode("ascii"))
-        if lab.arm != "a0":
-            raise ConfigError("Only passthrough is implemented")
     return ChatRequest.model_validate_json(body), lab
 
 

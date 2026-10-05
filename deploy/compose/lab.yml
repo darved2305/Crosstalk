@@ -12,7 +12,9 @@ services:
       - ../../.secrets/lab.crt:/run/secrets/tls.crt:ro
       - ../../.secrets/lab.key:/run/secrets/tls.key:ro
       - ../../artifacts/shaper-log:/artifacts/shaper-log
+      - ../../experiments/policies/arms.yaml:/run/config/policies.yaml:ro
     environment:
+      CT_SHAPER_POLICY_FILE: /run/config/policies.yaml
       CT_SHAPER_CERT: /run/secrets/tls.crt
       CT_SHAPER_KEY: /run/secrets/tls.key
       CT_SHAPER_ORACLE_DIR: /artifacts/shaper-log

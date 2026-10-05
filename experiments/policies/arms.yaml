@@ -1,0 +1,20 @@
+# Shaper policy set (loaded once at startup; a change means a new shaper process).
+# first_bucket is a placeholder: freeze it from the E0 pilot as the p99.9 single-event
+# framed size rounded up to 16 bytes (IMPLEMENTATION_PLAN §12.2), then record its hash.
+- arm: a0
+  kind: passthrough
+- arm: a1
+  kind: bucket_pad
+  parameters:
+    first_bucket: 256
+- arm: a2
+  kind: window_batch
+  parameters:
+    window_ms: 100
+    max_merge_bytes: 8192
+- arm: a4
+  kind: hybrid
+  parameters:
+    window_ms: 100
+    max_merge_bytes: 8192
+    first_bucket: 256

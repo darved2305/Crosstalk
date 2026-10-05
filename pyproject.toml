@@ -34,9 +34,11 @@ workloads = [
 [dependency-groups]
 dev = [
   "cryptography>=44,<49",
+  "httpx>=0.28,<1",
   "hypothesis>=6.130,<7",
   "import-linter>=2.3,<3",
   "matplotlib>=3.10,<4",
+  "openai>=1.100,<3",
   "pre-commit>=4.2,<5",
   "psutil>=6,<8",
   "pyarrow-stubs>=20.0.0.20260819",
