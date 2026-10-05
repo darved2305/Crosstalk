@@ -1,11 +1,46 @@
+import argparse
 import asyncio
+import functools
 import json
 import time
+from typing import cast
 
 import h11
 
+ECHO_TOKEN_DELAY_MS = 5.0
 
-async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+
+def prompt_words(payload: dict[str, object]) -> list[str]:
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return []
+    items = cast(list[object], messages)
+    if not items or not isinstance(items[-1], dict):
+        return []
+    return str(cast(dict[str, object], items[-1]).get("content", "")).split()
+
+
+def echo_plan(payload: dict[str, object]) -> list[str]:
+    """Deterministic, prompt-dependent tokens: the prompt's words, twice over.
+
+    Natural length is twice the word count, capped by ``max_completion_tokens`` and raised
+    to ``min_tokens``, so MATCH-PR length forcing behaves as it does in vLLM.
+    """
+    words = prompt_words(payload) or ["empty"]
+    count = 2 * len(words)
+    minimum = payload.get("min_tokens")
+    if isinstance(minimum, int):
+        count = max(count, minimum)
+    cap = payload.get("max_completion_tokens", payload.get("max_tokens", 512))
+    count = min(count, int(cap) if isinstance(cap, int) else 512)
+    return [words[index % len(words)] + " " for index in range(count)]
+
+
+async def _handle(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    token_delay_ms: float = ECHO_TOKEN_DELAY_MS,
+) -> None:
     connection = h11.Connection(h11.SERVER)
     request: h11.Request | None = None
     body = bytearray()
@@ -43,8 +78,16 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) ->
             await writer.drain()
             return
         payload = json.loads(body)
-        n = min(int(payload.get("mock_events", 50)), 1000)
-        delay = min(float(payload.get("mock_delay_ms", 5)), 1000) / 1000
+        if "mock_events" in payload:
+            n = min(int(payload["mock_events"]), 1000)
+            tokens = [str(payload.get("mock_text", "x"))] * n
+            delays = [min(float(payload.get("mock_delay_ms", 5)), 1000) / 1000] * n
+        else:
+            tokens = echo_plan(payload)
+            n = len(tokens)
+            # Longer words take slightly longer, giving the timing channel a content signal.
+            delays = [(token_delay_ms + 0.05 * len(token)) / 1000 for token in tokens]
+        prompt_tokens = len(prompt_words(payload))
         writer.write(
             connection.send(
                 h11.Response(
@@ -54,8 +97,7 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) ->
             )
         )
         await writer.drain()
-        for index in range(n):
-            text = str(payload.get("mock_text", "x"))
+        for index, text in enumerate(tokens):
             event = {
                 "id": "mock",
                 "object": "chat.completion.chunk",
@@ -65,13 +107,13 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) ->
             raw = b"data: " + json.dumps(event, separators=(",", ":")).encode() + b"\n\n"
             writer.write(connection.send(h11.Data(data=raw)))
             await writer.drain()
-            if delay and index < n - 1:
-                await asyncio.sleep(delay)
+            if delays[index] and index < n - 1:
+                await asyncio.sleep(delays[index])
         usage: dict[str, object] = {
             "id": "mock",
             "object": "chat.completion.chunk",
             "choices": [],
-            "usage": {"prompt_tokens": 1, "completion_tokens": n},
+            "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": n},
         }
         writer.write(
             connection.send(
@@ -89,11 +131,19 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) ->
         writer.close()
 
 
-async def run(host: str = "0.0.0.0", port: int = 8000) -> None:
-    server = await asyncio.start_server(_handle, host, port)
+async def run(
+    host: str = "0.0.0.0", port: int = 8000, token_delay_ms: float = ECHO_TOKEN_DELAY_MS
+) -> None:
+    handler = functools.partial(_handle, token_delay_ms=token_delay_ms)
+    server = await asyncio.start_server(handler, host, port)
     async with server:
         await server.serve_forever()
 
 
 def main() -> None:
-    asyncio.run(run())
+    parser = argparse.ArgumentParser(description="OpenAI-compatible streaming mock upstream")
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--token-delay-ms", type=float, default=ECHO_TOKEN_DELAY_MS)
+    arguments = parser.parse_args()
+    asyncio.run(run(arguments.host, arguments.port, arguments.token_delay_ms))

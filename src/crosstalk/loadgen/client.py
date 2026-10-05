@@ -55,6 +55,7 @@ async def request(
     read_delay_ms: float = 0,
     read_chunk_bytes: int = 65_536,
     keylog_file: Path | None = None,
+    arm: str = "a0",
 ) -> RequestResult:
     rid = request_id or new_ulid()
     context = client_context(ca_file, keylog_file)
@@ -66,7 +67,7 @@ async def request(
             (b"Content-Type", b"application/json"),
             (b"Content-Length", str(len(payload)).encode()),
             (b"Connection", b"close"),
-            (b"x-ct-arm", b"a0"),
+            (b"x-ct-arm", arm.encode("ascii")),
             (b"x-ct-rid", rid.encode()),
         ]
         outgoing = b"".join(

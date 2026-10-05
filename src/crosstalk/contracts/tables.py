@@ -118,6 +118,29 @@ SCHEMAS: Mapping[str, pa.Schema] = {
             ("plaintext_len", I32),
         ]
     ),
+    "plan": _schema(
+        [
+            ("slot", I32),
+            ("block", I32),
+            ("block_concurrency", I32),
+            ("request_id", S),
+            ("prompt_id", S),
+            ("arm", S),
+            ("stream_interval", I32),
+            ("regime", S),
+            ("role", S),
+            ("temperature", F32),
+            ("max_completion_tokens", I32),
+            ("min_tokens", I32),
+            ("seed", I64),
+            ("class", S),
+            ("family_id", S),
+            ("template_id", S),
+            ("prompt_bucket", I32),
+            ("target_len", I32),
+            ("t2_sensitive", B),
+        ]
+    ),
     "labels": _schema(
         [
             ("request_id", S),
@@ -126,6 +149,8 @@ SCHEMAS: Mapping[str, pa.Schema] = {
             ("family_id", S),
             ("template_id", S),
             ("regime", S),
+            ("role", S),
+            ("arm", S),
             ("prompt_bucket", I32),
             ("target_len", I32),
             ("t2_sensitive", B),
@@ -138,6 +163,9 @@ SCHEMAS: Mapping[str, pa.Schema] = {
     "predictions": _schema(
         [
             ("request_id", S),
+            ("regime", S),
+            ("task", S),
+            ("representation", S),
             ("fold", I32),
             ("arm", S),
             ("setting", S),
@@ -150,6 +178,9 @@ SCHEMAS: Mapping[str, pa.Schema] = {
     "evaluations": _schema(
         [
             ("experiment_id", S),
+            ("regime", S),
+            ("task", S),
+            ("representation", S),
             ("arm", S),
             ("setting", S),
             ("model", S),

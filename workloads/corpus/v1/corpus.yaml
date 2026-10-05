@@ -1,0 +1,321 @@
+# Crosstalk workload corpus v1.
+# Every family is one topic phrase. Each family is rendered through the same five
+# paraphrase templates, so template wording carries no class signal by itself.
+# Text must stay ASCII without quotes or backslashes so JSON request sizes depend only
+# on byte length (checked by the builder).
+version: 1.0.0
+sensitive_class: medical
+templates:
+  t0: Can you explain {topic} in simple terms?
+  t1: I would like a short overview of {topic}. What are the key points?
+  t2: What are the most important things a beginner should understand about {topic}?
+  t3: Give me a practical explanation of {topic}, including common mistakes to avoid.
+  t4: Summarize what someone should know about {topic} before getting started.
+determinism_template: t0
+classes:
+  medical:
+    determinism:
+      - seasonal allergies
+      - managing a mild fever at home
+    subtopics:
+      chronic conditions:
+        - type two diabetes
+        - high blood pressure
+        - asthma in adults
+        - chronic kidney disease
+        - rheumatoid arthritis
+        - hypothyroidism
+        - irritable bowel syndrome
+        - chronic migraine headaches
+      mental health:
+        - generalized anxiety disorder
+        - clinical depression
+        - insomnia and sleep hygiene
+        - panic attacks
+        - burnout and chronic stress
+        - obsessive compulsive disorder
+      treatments:
+        - antibiotic resistance
+        - how vaccines train the immune system
+        - physical therapy after knee surgery
+        - cholesterol lowering medication
+        - insulin pump therapy
+        - chemotherapy side effects
+        - blood thinners and bleeding risk
+      diagnostics:
+        - reading a complete blood count
+        - what an MRI scan shows
+        - colonoscopy preparation
+        - allergy skin testing
+        - bone density scans
+        - genetic screening for inherited disease
+      acute care:
+        - recognizing the signs of a stroke
+        - treating a sprained ankle
+        - concussion recovery
+        - dehydration in older adults
+        - food poisoning recovery
+        - kidney stones
+        - appendicitis symptoms
+      prevention:
+        - healthy sleep for teenagers
+        - reducing the risk of heart disease
+        - skin cancer prevention
+        - osteoporosis prevention
+        - managing lower back pain
+        - pregnancy nutrition
+  legal:
+    determinism:
+      - small claims court
+      - reading a residential lease
+    subtopics:
+      contracts:
+        - breach of contract remedies
+        - non compete agreements
+        - independent contractor agreements
+        - force majeure clauses
+        - verbal agreements and enforceability
+        - arbitration clauses
+        - liquidated damages
+      property:
+        - landlord tenant disputes
+        - security deposit rules
+        - easements and property access
+        - adverse possession
+        - homeowners association rules
+        - zoning variances
+        - title insurance
+      family:
+        - uncontested divorce
+        - child custody arrangements
+        - prenuptial agreements
+        - adoption procedures
+        - guardianship of an elderly parent
+        - spousal support
+      business:
+        - forming a limited liability company
+        - trademark registration
+        - copyright fair use
+        - patent infringement claims
+        - employment discrimination claims
+        - wrongful termination
+        - data protection compliance
+      civil procedure:
+        - filing a civil lawsuit
+        - statutes of limitations
+        - discovery and depositions
+        - class action lawsuits
+        - appealing a court decision
+        - mediation before trial
+      estates:
+        - writing a simple will
+        - probate administration
+        - living trusts
+        - power of attorney documents
+        - inheritance disputes
+        - executor responsibilities
+        - estate tax planning
+  finance:
+    determinism:
+      - building an emergency fund
+      - how compound interest works
+    subtopics:
+      investing:
+        - index fund investing
+        - dollar cost averaging
+        - bond ladders
+        - dividend reinvestment
+        - asset allocation by age
+        - exchange traded funds
+        - rebalancing a portfolio
+      retirement:
+        - employer retirement plans
+        - individual retirement accounts
+        - required minimum distributions
+        - annuities for retirement income
+        - early retirement planning
+        - pension lump sum decisions
+      credit:
+        - improving a credit score
+        - paying off credit card debt
+        - debt consolidation loans
+        - fixed versus variable rate mortgages
+        - refinancing a mortgage
+        - student loan repayment plans
+        - car loan financing
+      taxes:
+        - capital gains tax
+        - itemized versus standard deductions
+        - tax loss harvesting
+        - self employment taxes
+        - estimated quarterly tax payments
+        - tax treatment of stock options
+      budgeting:
+        - zero based budgeting
+        - tracking household expenses
+        - saving for a down payment
+        - sinking funds for large purchases
+        - reducing monthly subscriptions
+        - budgeting on an irregular income
+        - saving for college
+      markets:
+        - how inflation affects savings
+        - interest rate changes and bonds
+        - currency exchange risk
+        - market volatility and diversification
+        - reading a company balance sheet
+        - price to earnings ratios
+        - how stock buybacks work
+  programming:
+    determinism:
+      - recursion in programming
+      - version control with branches
+    subtopics:
+      languages:
+        - python list comprehensions
+        - javascript promises and async functions
+        - rust ownership and borrowing
+        - generics in typed languages
+        - closures and lexical scope
+        - pattern matching in modern languages
+        - memory management with garbage collection
+      data structures:
+        - hash tables and collisions
+        - binary search trees
+        - linked lists versus arrays
+        - priority queues and heaps
+        - graph traversal algorithms
+        - tries for prefix search
+      systems:
+        - multithreading and race conditions
+        - deadlocks and lock ordering
+        - event loops and nonblocking io
+        - operating system processes
+        - virtual memory and paging
+        - file system journaling
+        - network sockets
+      web:
+        - rest api design
+        - database indexing
+        - sql joins
+        - caching strategies for web services
+        - cross site scripting prevention
+        - authentication with session tokens
+        - websockets for realtime updates
+      practices:
+        - writing unit tests
+        - continuous integration pipelines
+        - code review practices
+        - refactoring legacy code
+        - semantic versioning
+        - dependency injection
+      performance:
+        - big o notation
+        - profiling slow programs
+        - dynamic programming
+        - sorting algorithm tradeoffs
+        - parallel map reduce jobs
+        - query optimization in databases
+        - memory leaks in long running services
+  travel:
+    determinism:
+      - packing a carry on bag
+      - dealing with jet lag
+    subtopics:
+      planning:
+        - planning a two week trip through italy
+        - choosing travel insurance
+        - booking cheap flights
+        - traveling during shoulder season
+        - creating a realistic travel itinerary
+        - traveling with young children
+        - solo travel safety
+      transport:
+        - rail passes in europe
+        - renting a car abroad
+        - long haul flight comfort
+        - ferry travel between islands
+        - using public transit in tokyo
+        - night trains
+      lodging:
+        - choosing between hotels and hostels
+        - house sitting while traveling
+        - booking vacation rentals
+        - camping in national parks
+        - staying in mountain huts
+        - finding quiet accommodation in cities
+      destinations:
+        - visiting the national parks of utah
+        - a first trip to iceland
+        - exploring the temples of kyoto
+        - hiking in patagonia
+        - a weekend in lisbon
+        - island hopping in greece
+        - a road trip along the pacific coast
+      logistics:
+        - travel visas and entry requirements
+        - using credit cards abroad
+        - staying connected with local sim cards
+        - travel vaccinations
+        - lost luggage claims
+        - airport security procedures
+        - tipping customs in different countries
+      experiences:
+        - learning basic phrases before a trip
+        - responsible wildlife tourism
+        - photography while traveling
+        - finding local food markets
+        - visiting museums efficiently
+        - eco friendly travel
+        - attending local festivals abroad
+  cooking:
+    determinism:
+      - boiling pasta properly
+      - making a basic vinaigrette
+    subtopics:
+      techniques:
+        - braising tough cuts of meat
+        - searing steak in a cast iron pan
+        - poaching eggs
+        - making a roux for sauces
+        - knife skills for vegetables
+        - deglazing a pan
+        - sous vide cooking
+      baking:
+        - sourdough starter maintenance
+        - laminated pastry dough
+        - baking gluten free bread
+        - tempering chocolate
+        - making pie crust from scratch
+        - baking soft cookies
+      cuisines:
+        - authentic thai green curry
+        - homemade fresh pasta
+        - mexican mole sauces
+        - japanese ramen broth
+        - indian lentil dal
+        - french onion soup
+        - korean kimchi fermentation
+      planning:
+        - weekly meal prep
+        - cooking for a large dinner party
+        - stocking a basic pantry
+        - reducing food waste at home
+        - cooking on a tight budget
+        - freezing and reheating meals
+        - quick weeknight dinners
+      ingredients:
+        - choosing olive oil
+        - cooking with dried beans
+        - using fresh herbs
+        - selecting ripe produce
+        - cooking with tofu
+        - spice blending
+      equipment:
+        - caring for a carbon steel wok
+        - using a pressure cooker
+        - choosing a chef knife
+        - grilling over charcoal
+        - smoking meat at low temperature
+        - using a stand mixer
+        - calibrating an oven thermometer

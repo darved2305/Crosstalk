@@ -177,6 +177,8 @@ def evaluate_session(root: Path, session_id: str) -> dict[str, object]:
         and not json.loads(keylog_result.read_text(encoding="utf-8"))["exact"]
     ):
         reasons.append("Restricted keylog plaintext comparison failed")
+    if manifest.get("validation", {}).get("length_forcing") is False:
+        reasons.append("MATCH-PR responses missed their forced length")
     if manifest["git_dirty"]:
         reasons.append("Source tree was dirty during collection")
     if not all(

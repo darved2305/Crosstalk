@@ -7,6 +7,7 @@ import subprocess
 import time
 from importlib.metadata import version
 from pathlib import Path
+from typing import Protocol
 
 import h11
 import pyarrow as pa
@@ -21,6 +22,23 @@ from crosstalk.contracts.parquet import write_table
 from crosstalk.contracts.tables import schema_for
 from crosstalk.loadgen.client import RequestResult, request
 from crosstalk.loadgen.provenance import CaptureMetadata, LabProvenance
+from crosstalk.workloads.corpus import Corpus, load_corpus
+from crosstalk.workloads.planner import plan_session, request_body
+
+
+class CaptureController(Protocol):
+    async def start(self, session_id: str) -> CaptureMetadata: ...
+    async def stop(self, session_id: str) -> CaptureMetadata: ...
+
+
+class HttpCaptureControl:
+    """Drives the capture supervisor that shares the loadgen network namespace."""
+
+    async def start(self, session_id: str) -> CaptureMetadata:
+        return CaptureMetadata.model_validate(await capture_control(b"/capture/start", session_id))
+
+    async def stop(self, session_id: str) -> CaptureMetadata:
+        return CaptureMetadata.model_validate(await capture_control(b"/capture/stop", session_id))
 
 
 async def capture_control(path: bytes, session_id: str) -> dict[str, object]:
@@ -118,6 +136,12 @@ def _provenance() -> LabProvenance:
     return LabProvenance(git_commit=commit, git_dirty=dirty)
 
 
+def _corpus_tokenizer(corpus: Corpus | None) -> str | None:
+    if corpus is None or not corpus.manifest.get("tokenizer_revision"):
+        return None
+    return str(corpus.manifest["tokenizer_revision"])
+
+
 async def run_session(
     plan: SessionPlan,
     root: Path,
@@ -125,33 +149,31 @@ async def run_session(
     port: int = 8443,
     ca_file: str | None = None,
     experiment: ExperimentConfig | None = None,
+    capture: CaptureController | None = None,
 ) -> str:
     provenance = _provenance()
+    capture = capture or HttpCaptureControl()
     policies = experiment.policy_set if experiment is not None else []
+    corpus: Corpus | None = None
+    if plan.workload is not None:
+        workload = Path(plan.workload)
+        corpus = load_corpus(workload if workload.is_absolute() else root / workload)
+    planned = plan_session(plan, corpus)
+    slots = planned.rows
     session_id = new_ulid()
     session = root / "sessions" / session_id
     session.mkdir(parents=True, exist_ok=False)
     session.chmod(0o775)
+    _write_parquet(session / "plan.parquet", "plan", session_id, slots)
     started = time.time_ns()
     start_mono = time.monotonic_ns()
-    capture_start = CaptureMetadata.model_validate(
-        await capture_control(b"/capture/start", session_id)
-    )
+    capture_start = await capture.start(session_id)
     semaphore = asyncio.Semaphore(plan.concurrency)
 
-    async def one(slot: int) -> RequestResult:
+    async def one(slot: dict[str, object]) -> RequestResult:
         async with semaphore:
-            request_id = new_ulid()
-            body: dict[str, object] = {
-                "model": plan.model,
-                "messages": [
-                    {"role": "user", "content": f"Explain a simple synthetic topic {slot}."}
-                ],
-                "stream": True,
-                "stream_options": {"include_usage": True},
-                "cache_salt": new_ulid(),
-                "seed": plan.seed + slot,
-            }
+            request_id = str(slot["request_id"])
+            body = request_body(slot, planned.texts[request_id], plan.model)
             keylog = (
                 root / "restricted" / session_id / "keylogs" / f"{request_id}.keylog"
                 if plan.validation
@@ -159,7 +181,13 @@ async def run_session(
             )
             try:
                 return await request(
-                    host, port, body, ca_file, request_id=request_id, keylog_file=keylog
+                    host,
+                    port,
+                    body,
+                    ca_file,
+                    request_id=request_id,
+                    keylog_file=keylog,
+                    arm=str(slot["arm"]),
                 )
             finally:
                 if keylog is not None and keylog.exists():
@@ -168,13 +196,9 @@ async def run_session(
     results: list[RequestResult | BaseException] = []
     capture_stop: CaptureMetadata | None = None
     try:
-        results = await asyncio.gather(
-            *(one(slot) for slot in range(plan.requests)), return_exceptions=True
-        )
+        results = await asyncio.gather(*(one(slot) for slot in slots), return_exceptions=True)
     finally:
-        capture_stop = CaptureMetadata.model_validate(
-            await capture_control(b"/capture/stop", session_id)
-        )
+        capture_stop = await capture.stop(session_id)
     requests: list[dict[str, object]] = []
     events: list[dict[str, object]] = []
     reads: list[dict[str, object]] = []
@@ -182,7 +206,8 @@ async def run_session(
     text: list[dict[str, object]] = []
     failures = 0
     request_ids: set[str] = set()
-    for slot, result in enumerate(results):
+    length_mismatches = 0
+    for slot, result in zip(slots, results, strict=True):
         if isinstance(result, BaseException):
             failures += 1
             continue
@@ -192,9 +217,9 @@ async def run_session(
         requests.append(
             {
                 "request_id": result.request_id,
-                "slot": slot,
-                "arm": plan.arm,
-                "stream_interval": 1,
+                "slot": slot["slot"],
+                "arm": slot["arm"],
+                "stream_interval": slot["stream_interval"],
                 "client_port": result.client_port,
                 "t_connect_ns": result.t_connect_ns,
                 "t_tls_ns": result.t_tls_ns,
@@ -218,10 +243,16 @@ async def run_session(
         text.append(
             {
                 "request_id": result.request_id,
-                "prompt_text": f"Explain a simple synthetic topic {slot}.",
+                "prompt_text": planned.texts[result.request_id],
                 "response_text": result.content,
             }
         )
+        if (
+            slot["target_len"] is not None
+            and result.status == 200
+            and result.completion_tokens != slot["target_len"]
+        ):
+            length_mismatches += 1
         for event in result.events:
             events.append(
                 {
@@ -250,6 +281,30 @@ async def run_session(
     (session / "observer").chmod(0o775)
     _write_parquet(root / "restricted" / session_id / "text.parquet", "text", session_id, text)
     _collect_emissions(root, session_id, request_ids)
+    labels = [
+        {
+            "request_id": slot["request_id"],
+            "prompt_id": slot["prompt_id"],
+            "class": slot["class"],
+            "family_id": slot["family_id"],
+            "template_id": slot["template_id"],
+            "regime": slot["regime"],
+            "role": slot["role"],
+            "arm": slot["arm"],
+            "prompt_bucket": slot["prompt_bucket"],
+            "target_len": slot["target_len"],
+            "t2_sensitive": slot["t2_sensitive"],
+        }
+        for slot in slots
+    ]
+    _write_parquet(root / "labels" / session_id / "labels.parquet", "labels", session_id, labels)
+    validation: dict[str, bool] = {}
+    reasons = ["Reconstruction and independent validation pending"]
+    if any(slot["target_len"] is not None for slot in slots):
+        # MATCH-PR is only meaningful if the engine produced exactly the forced length.
+        validation["length_forcing"] = length_mismatches == 0
+        if length_mismatches:
+            reasons.append(f"{length_mismatches} responses missed their forced length")
     environment = {
         "client_host": host,
         "kernel": platform.release(),
@@ -269,26 +324,26 @@ async def run_session(
         config_sha256=experiment.sha256()
         if experiment is not None
         else sha256_bytes(plan.model_dump_json().encode()),
-        plan_sha256=sha256_bytes(plan.model_dump_json().encode()),
+        plan_sha256=planned.sha256(),
         git_commit=provenance.git_commit,
         git_dirty=provenance.git_dirty,
         image_digests=provenance.image_digests,
         vllm_version=provenance.vllm_version,
         model_id=plan.model,
         model_revision=provenance.model_revision,
-        tokenizer_revision=provenance.tokenizer_revision,
-        workload_version="synthetic-validation-v1",
-        workload_sha256=sha256_bytes(
-            "\n".join(
-                f"Explain a simple synthetic topic {slot}." for slot in range(plan.requests)
-            ).encode()
-        ),
+        tokenizer_revision=provenance.tokenizer_revision or _corpus_tokenizer(corpus),
+        workload_version=str(corpus.manifest["workload_version"])
+        if corpus is not None
+        else "synthetic-validation-v1",
+        workload_sha256=str(corpus.manifest["workload_sha256"])
+        if corpus is not None
+        else sha256_bytes("\n".join(sorted(planned.texts.values())).encode()),
         policy_set_sha256=sha256_bytes(
             json.dumps([policy.model_dump() for policy in policies], sort_keys=True).encode()
         ),
         policies=policies,
         seeds={"plan": plan.seed, "model": 0},
-        stream_interval=1,
+        stream_interval=plan.stream_interval,
         concurrency=plan.concurrency,
         environment=environment,
         timing={
@@ -297,14 +352,15 @@ async def run_session(
             "end_realtime_ns": time.time_ns(),
             "end_monotonic_ns": time.monotonic_ns(),
         },
-        planned=plan.requests,
+        planned=len(slots),
         completed=sum(
             result.status == 200 for result in results if isinstance(result, RequestResult)
         ),
         failed=failures,
         capture_drops=capture_stop.kernel_drops,
+        validation=validation,
         status=SessionStatus.PARTIAL,
-        reasons=["Reconstruction and independent validation pending"],
+        reasons=reasons,
     )
     atomic_write(session / "manifest.json", manifest.model_dump_json(indent=2).encode())
     return session_id
