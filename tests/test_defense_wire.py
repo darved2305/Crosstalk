@@ -30,6 +30,9 @@ from test_integration import _certificate, _port, _wait_port
 SOURCE = Path(__file__).parents[1] / "workloads" / "corpus" / "v1" / "corpus.yaml"
 WINDOW_MS = 15
 FIRST_BUCKET = 256
+TICK_MS = 5
+RECORD_SIZE = 512
+QUANTUM = 4
 POLICIES = [
     {"arm": "a0", "kind": "passthrough"},
     {"arm": "a1", "kind": "bucket_pad", "parameters": {"first_bucket": FIRST_BUCKET}},
@@ -38,6 +41,15 @@ POLICIES = [
         "arm": "a4",
         "kind": "hybrid",
         "parameters": {"window_ms": WINDOW_MS, "first_bucket": FIRST_BUCKET},
+    },
+    {
+        "arm": "a3",
+        "kind": "constant_rate",
+        "parameters": {
+            "interval_ms": TICK_MS,
+            "record_size": RECORD_SIZE,
+            "tail_quantum_ticks": QUANTUM,
+        },
     },
 ]
 EVENT_KINDS = {"content", "merged", "padded"}
@@ -118,7 +130,7 @@ def _sdk_stream(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("arm", ["a0", "a1", "a2", "a4"])
+@pytest.mark.parametrize("arm", ["a0", "a1", "a2", "a3", "a4"])
 async def test_openai_sdk_sees_identical_content(arm: str, tmp_path: Path) -> None:
     prompt = "Explain sourdough starter maintenance with practical tips for a beginner baker"
     expected = "".join(echo_plan({"messages": [{"role": "user", "content": prompt}]}))
@@ -139,6 +151,10 @@ async def test_openai_sdk_sees_identical_content(arm: str, tmp_path: Path) -> No
     if arm in ("a1", "a4"):
         buckets = set(ladder(FIRST_BUCKET))
         assert all(row["framed_len"] in buckets for row in rows if row["kind"] in EVENT_KINDS)
+    if arm == "a3":
+        ticks = [row for row in rows if row["kind"] not in ("headers", "terminator")]
+        assert {row["framed_len"] for row in ticks} == {RECORD_SIZE}
+        assert len(ticks) % QUANTUM == 0
 
 
 @pytest.mark.asyncio
@@ -162,7 +178,7 @@ async def test_defended_records_on_the_wire(tmp_path: Path) -> None:
                     "experiment_id": "wire",
                     "workload": str(workload),
                     "per_class": 2,
-                    "arms": ["a0", "a1", "a2", "a4"],
+                    "arms": ["a0", "a1", "a2", "a3", "a4"],
                     "concurrency": 4,
                     "seed": 5,
                     "model": "mock",
@@ -185,7 +201,7 @@ async def test_defended_records_on_the_wire(tmp_path: Path) -> None:
         emissions = lab.emissions()
     session = root / "sessions" / session_id
     manifest = json.loads((session / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["failed"] == 0 and manifest["planned"] == 6 * 4 * 2
+    assert manifest["failed"] == 0 and manifest["planned"] == 6 * 5 * 2
     reconstruct(session / "pcap" / "cap.pcapng", session / "observer", session_id)
     map_flows(root, session_id)
     fidelity = validate_emissions(root, session_id)
@@ -225,4 +241,7 @@ async def test_defended_records_on_the_wire(tmp_path: Path) -> None:
             merged += sum(row["kind"] == "merged" for row in rows)
         if arm == "a0":
             assert all(rows[i]["kind"] == "content" for i in events)
+        if arm == "a3":
+            ticks = lengths[1:-1]
+            assert set(ticks) == {RECORD_SIZE + 17} and len(ticks) % QUANTUM == 0
     assert merged > 0

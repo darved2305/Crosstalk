@@ -25,6 +25,7 @@ from crosstalk.shaper.framer import (
 )
 from crosstalk.shaper.policies import (
     BucketPad,
+    ConstantRate,
     Emit,
     Passthrough,
     WindowBatch,
@@ -212,6 +213,11 @@ ARMS = {
         arm="a2", kind="window_batch", parameters={"window_ms": 3, "max_merge_bytes": 40}
     ),
     "a4": PolicyConfig(arm="a4", kind="hybrid", parameters={"window_ms": 3, "first_bucket": 128}),
+    "a3": PolicyConfig(
+        arm="a3",
+        kind="constant_rate",
+        parameters={"interval_ms": 2, "record_size": 256, "tail_quantum_ticks": 4},
+    ),
 }
 
 
@@ -296,6 +302,12 @@ def test_content_fidelity_under_every_arm(
             assert (row["pad_bytes"] > 0) == has_comment
     if arm == "a0":
         assert all(row["kind"] == "content" and row["n_events"] == 1 for row in rows)
+    if arm == "a3":
+        # Constant size and a tick count quantised to the tail quantum.
+        assert all(len(frame) == 256 for frame in frames)
+        assert len(frames) % 4 == 0
+        assert all(row["kind"] in ("padded", "merged", "dummy") for row in rows)
+        assert all(row["timer_lateness_ns"] >= 0 for row in rows)
 
 
 def test_window_batch_merges_and_logs_grid_lateness() -> None:
@@ -388,7 +400,13 @@ def test_policy_set_loading(tmp_path: Path) -> None:
     from crosstalk.shaper.server import ShaperSettings, load_policies
 
     shipped = Path(__file__).parents[1] / "experiments" / "policies" / "arms.yaml"
-    assert sorted(load_policies(ShaperSettings(policy_file=shipped))) == ["a0", "a1", "a2", "a4"]
+    assert sorted(load_policies(ShaperSettings(policy_file=shipped))) == [
+        "a0",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+    ]
     assert list(load_policies(ShaperSettings())) == ["a0"]
     duplicate = tmp_path / "duplicate.yaml"
     duplicate.write_text("- {arm: a0}\n- {arm: a0}\n", encoding="utf-8")
@@ -405,3 +423,50 @@ def test_policy_set_loading(tmp_path: Path) -> None:
     )
     with pytest.raises(ConfigError):
         load_policies(ShaperSettings(policy_file=bad))
+
+
+def test_constant_rate_schedule() -> None:
+    policy = ConstantRate(50 * MS, 512, 4)
+    assert policy.next_deadline_ns([], 0) is None
+    policy.on_start(1000)
+    assert policy.next_deadline_ns([], 1000) == 1000 + 50 * MS
+    assert policy.on_event(_meta(5), [_meta(5)], 5) == []
+    for tick in range(1, 6):
+        assert policy.on_timer([], 0) == [Emit(0, fill=512)]
+        assert policy.next_deadline_ns([], 0) == 1000 + (tick + 1) * 50 * MS
+    policy.on_upstream_end([], 0)
+    # 5 ticks so far: the tail runs to 8, the next multiple of the quantum.
+    assert policy.next_deadline_ns([], 0) is not None
+    for _ in range(3):
+        policy.on_timer([], 0)
+    assert policy.next_deadline_ns([], 0) is None
+    assert policy.next_deadline_ns([_meta(1)], 0) is not None
+    with pytest.raises(ConfigError):
+        ConstantRate(0, 512, 4)
+    with pytest.raises(ConfigError):
+        ConstantRate(MS, 8, 4)
+    built = build_policy(
+        PolicyConfig(arm="a3", kind="constant_rate", parameters={"first_bucket": 192})
+    )
+    assert isinstance(built, ConstantRate)
+    assert (built.record_size, built.interval_ns, built.quantum) == (384, 50 * MS, 32)
+
+
+def test_constant_rate_backlog_and_oversize() -> None:
+    contents = ["word " * 3] * 12 + ["x" * 600]
+    stream = _upstream(contents, True)
+    frames, rows = asyncio.run(_run_emitter("a3", stream, [], [0.0]))
+    sizes = {
+        len(frame) for frame, row in zip(frames, rows, strict=True) if row["kind"] != "oversize"
+    }
+    assert sizes == {256}
+    oversize = [row for row in rows if row["kind"] == "oversize"]
+    assert len(oversize) == 1 and oversize[0]["content_bytes"] == 600
+    # Several small deltas share one record when they fit.
+    assert any(row["kind"] == "merged" and row["n_events"] > 1 for row in rows)
+    text = "".join(
+        str(choice.get("delta", {}).get("content") or "")  # type: ignore[union-attr]
+        for event in _events(frames)
+        for choice in event.get("choices", [])  # type: ignore[union-attr]
+    )
+    assert text == "".join(contents)

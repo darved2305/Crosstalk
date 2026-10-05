@@ -18,3 +18,9 @@
     window_ms: 100
     max_merge_bytes: 8192
     first_bucket: 256
+- arm: a3
+  kind: constant_rate
+  parameters:
+    interval_ms: 50
+    record_size: 512
+    tail_quantum_ticks: 32

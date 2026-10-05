@@ -114,10 +114,11 @@ class StreamEmitter:
             metas = [event.meta for event in self.pending]
             deadline = self.policy.next_deadline_ns(metas, self.clock())
             if ended:
-                if not self.pending:
-                    return
+                # A policy may keep ticking after the upstream ends (D3 tail quantum).
                 if deadline is None:
-                    raise ValidationError("Policy left events pending with no deadline")
+                    if self.pending:
+                        raise ValidationError("Policy left events pending with no deadline")
+                    return
                 await asyncio.sleep(max(0.0, (deadline - self.clock()) / 1e9))
                 await self._tick(deadline)
                 continue
@@ -155,6 +156,11 @@ class StreamEmitter:
             await self._emit(emit, deadline)
 
     async def _emit(self, emit: Emit, deadline: int | None) -> None:
+        if emit.fill is not None:
+            if emit.take:
+                raise ValidationError("A fill emission chooses its own events")
+            await self._fill(emit.fill, deadline)
+            return
         if emit.take > len(self.pending):
             raise ValidationError("Policy took more events than are pending")
         taken = [self.pending.popleft() for _ in range(emit.take)]
@@ -185,6 +191,38 @@ class StreamEmitter:
                 return
         for segment in framed_segments(payload):
             await self._send(segment, kind, len(segment), taken, deadline)
+
+    async def _fill(self, size: int, deadline: int | None) -> None:
+        """Exactly ``size`` framed bytes: the longest head run that fits, else a dummy."""
+        if not self.pending:
+            await self._send(dummy(size), "dummy", 0, [], deadline)
+            return
+        best: tuple[int, bytes, bytes] | None = None
+        head = self.pending[0]
+        frame = padded(head.raw, size)
+        if frame is not None:
+            best = (1, head.raw, frame)
+        if head.meta.mergeable:
+            count = 2
+            while count <= len(self.pending) and self.pending[count - 1].meta.mergeable:
+                run = [self.pending[index] for index in range(count)]
+                payload = merged_event(run[0].header, run[0].index, [e.content for e in run])
+                frame = padded(payload, size)
+                if frame is None:
+                    break
+                best = (count, payload, frame)
+                count += 1
+        if best is None:
+            # One event larger than the record size: sent unpadded, which breaks constant
+            # size for this record; the emission log keeps it visible as "oversize".
+            event = self.pending.popleft()
+            for segment in framed_segments(event.raw):
+                await self._send(segment, "oversize", len(segment), [event], deadline)
+            return
+        count, payload, frame = best
+        taken = [self.pending.popleft() for _ in range(count)]
+        kind = "merged" if count > 1 else "padded"
+        await self._send(frame, kind, framed_length(len(payload)), taken, deadline)
 
     async def _send(
         self,

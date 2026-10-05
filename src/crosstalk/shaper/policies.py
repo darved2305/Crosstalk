@@ -23,12 +23,16 @@ class Emit:
     ``merge`` concatenates content deltas (all taken events must be mergeable).
     ``ladder`` pads the chunk to the smallest bucket its actual framed size fits.
     ``dummy`` sends a comment-only block of that many framed bytes (``take`` must be 0).
+    ``fill`` sends exactly that many framed bytes: as many head events as fit, merged and
+    padded, or a dummy block when nothing is pending (``take`` must be 0). The emitter
+    chooses how many events fit, so the policy still decides only when and how big.
     """
 
     take: int
     merge: bool = False
     ladder: tuple[int, ...] | None = None
     dummy: int | None = None
+    fill: int | None = None
 
 
 class Policy(Protocol):
@@ -148,6 +152,50 @@ class WindowBatch:
         return []
 
 
+class ConstantRate:
+    """D3: one record of ``record_size`` every ``interval`` from request arrival.
+
+    Each tick carries as much pending content as fits, or a dummy block. Backlog carries
+    over, so latency grows when generation outpaces capacity. After the upstream ends and
+    the backlog drains, ticks continue until the count is a multiple of ``quantum`` so the
+    response length is visible only in quanta.
+    """
+
+    def __init__(self, interval_ns: int, record_size: int, quantum: int) -> None:
+        if interval_ns <= 0 or quantum <= 0:
+            raise ConfigError("interval and tail quantum must be positive")
+        if not MIN_BUCKET <= record_size <= MAX_PLAINTEXT:
+            raise ConfigError("record_size must lie in [16, 16384]")
+        self.interval_ns = interval_ns
+        self.record_size = record_size
+        self.quantum = quantum
+        self.start: int | None = None
+        self.ticks = 0
+        self.ended = False
+
+    def on_start(self, now_ns: int) -> list[Emit]:
+        self.start = now_ns
+        return []
+
+    def on_event(self, meta: EventMeta, pending: Sequence[EventMeta], now_ns: int) -> list[Emit]:
+        return []
+
+    def on_timer(self, pending: Sequence[EventMeta], now_ns: int) -> list[Emit]:
+        self.ticks += 1
+        return [Emit(0, fill=self.record_size)]
+
+    def on_upstream_end(self, pending: Sequence[EventMeta], now_ns: int) -> list[Emit]:
+        self.ended = True
+        return []
+
+    def next_deadline_ns(self, pending: Sequence[EventMeta], now_ns: int) -> int | None:
+        if self.start is None:
+            return None
+        if self.ended and not pending and self.ticks % self.quantum == 0:
+            return None
+        return self.start + (self.ticks + 1) * self.interval_ns
+
+
 def build_policy(config: PolicyConfig) -> Policy:
     parameters = config.parameters
     if config.kind == "passthrough":
@@ -161,5 +209,14 @@ def build_policy(config: PolicyConfig) -> Policy:
         )
         return WindowBatch(
             int(window_ms * 1_000_000), int(parameters.get("max_merge_bytes", 8192)), buckets
+        )
+    if config.kind == "constant_rate":
+        record_size = int(
+            parameters.get("record_size", 2 * int(parameters.get("first_bucket", 256)))
+        )
+        return ConstantRate(
+            int(float(parameters.get("interval_ms", 50)) * 1_000_000),
+            record_size,
+            int(parameters.get("tail_quantum_ticks", 32)),
         )
     raise ConfigError(f"Unknown policy kind: {config.kind}")
