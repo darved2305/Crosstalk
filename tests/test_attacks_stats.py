@@ -299,3 +299,58 @@ def test_power_check() -> None:
     wide = power_check(np.random.default_rng(0).normal(0.5, 0.2, 2000), 60, 200, 300, 0.05)
     assert not wide["meets_target_at_max"]
     assert wide["recommended_per_class"] == 300
+
+
+def test_two_stage_reduces_to_family_bootstrap_with_one_session() -> None:
+    from crosstalk.stats.bootstrap import TwoStageResamples
+
+    families, labels = _table(3, 6, 2)
+    two = TwoStageResamples.draw(["s1"] * len(families), families, labels, 300, 4)
+    assert two.b == 300
+    for replicate in range(20):
+        weights = two.weights(replicate)
+        assert weights.sum() == len(families)
+        per_class = Counter()
+        for label, w in zip(labels, weights, strict=True):
+            per_class[label] += w
+        assert set(per_class.values()) == {12}
+
+
+def test_two_stage_carries_session_variation() -> None:
+    from crosstalk.stats.bootstrap import ClusterResamples, TwoStageResamples
+
+    families, labels = _table(2, 20, 1)
+    sessions = ["s1"] * len(families) + ["s2"] * len(families)
+    families = families + families
+    labels = labels + labels
+    # A large day effect: session 2 sits 1.0 higher than session 1.
+    rng = np.random.default_rng(0)
+    values = np.asarray([0.0] * 40 + [1.0] * 40) + rng.normal(0, 0.05, 80)
+
+    def mean(w: np.ndarray) -> dict[str, float]:
+        return {"m": float(np.sum(w * values) / np.sum(w))}
+
+    two = TwoStageResamples.draw(sessions, families, labels, 1000, 1)
+    # Family-only bootstrap treating each session's families as distinct clusters.
+    keyed_families = [f"{s}:{f}" for s, f in zip(sessions, families, strict=True)]
+    keyed_classes = [f"{s}:{label}" for s, label in zip(sessions, labels, strict=True)]
+    one = ClusterResamples.draw(
+        keyed_families,
+        keyed_classes,
+        1000,
+        1,
+    )
+    se_two = float(np.std(bootstrap_metrics(mean, 80, two)["m"][3]))
+    se_one = float(np.std(bootstrap_metrics(mean, 80, one)["m"][3]))
+    assert se_two > 5 * se_one
+    # Restricting rows keeps replicates aligned (paired) with the full set.
+    rows = np.arange(0, 80, 2, dtype=np.int64)
+    sub = two.restrict(rows)
+    assert np.array_equal(sub.weights(3), two.weights(3)[rows])
+
+
+def test_two_stage_rejects_inconsistent_labels() -> None:
+    from crosstalk.stats.bootstrap import TwoStageResamples
+
+    with pytest.raises(ConfigError):
+        TwoStageResamples.draw(["s", "s"], ["f", "f"], ["a", "b"], 10, 0)

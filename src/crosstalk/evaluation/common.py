@@ -15,16 +15,16 @@ import pyarrow as pa
 from crosstalk.attacks.models import FloatArray
 from crosstalk.attacks.protocols import Prediction
 from crosstalk.attacks.splits import IntArray
-from crosstalk.common.errors import ValidationError
+from crosstalk.common.errors import ConfigError, ValidationError
 from crosstalk.common.ids import new_ulid
 from crosstalk.contracts.parquet import write_table
 from crosstalk.contracts.tables import schema_for
 from crosstalk.features.traces import TraceSet
-from crosstalk.stats.bootstrap import ClusterResamples, bootstrap_metrics
+from crosstalk.stats.bootstrap import Resamples, bootstrap_metrics
 from crosstalk.stats.metrics import Scorer
 
 BASELINE_ARM = "a0"
-Key = tuple[str, str, str, str, str, str]
+Key = tuple[str, str, str, str, str, str, int | None]
 
 
 @dataclass(slots=True)
@@ -47,19 +47,40 @@ class Results:
         name: str,
         arm: str = BASELINE_ARM,
         setting: str = "static",
+        concurrency: int | None = None,
     ) -> dict[str, object]:
-        wanted = (regime, task, rep, model, name, arm, setting)
+        wanted = (regime, task, rep, model, name, arm, setting, concurrency)
         for row in self.evaluations:
             key = tuple(
                 row[k]
-                for k in ("regime", "task", "representation", "model", "metric", "arm", "setting")
+                for k in (
+                    "regime",
+                    "task",
+                    "representation",
+                    "model",
+                    "metric",
+                    "arm",
+                    "setting",
+                    "concurrency",
+                )
             )
             if key == wanted:
                 return row
         raise KeyError(wanted)
 
-    def value(self, *args: str, **kwargs: str) -> float:
-        return float(str(self.metric(*args, **kwargs)["value"]))
+    def value(
+        self,
+        regime: str,
+        task: str,
+        rep: str,
+        model: str,
+        name: str,
+        arm: str = BASELINE_ARM,
+        setting: str = "static",
+        concurrency: int | None = None,
+    ) -> float:
+        row = self.metric(regime, task, rep, model, name, arm, setting, concurrency)
+        return float(str(row["value"]))
 
 
 def discover(root: Path, experiment_id: str) -> list[dict[str, object]]:
@@ -83,6 +104,17 @@ def reportable(manifests: list[dict[str, object]], allow_unvalidated: bool) -> b
     return not unreportable
 
 
+def require_single(traces: TraceSet, experiment: str, *columns: str) -> None:
+    """Refuse to pool serving conditions this analysis does not model (that is E2's job)."""
+    for column in columns:
+        values = sorted({str(value) for value in traces.column(column)})
+        if len(values) > 1:
+            raise ConfigError(
+                f"{experiment} expects one {column} but the sessions mix {values}; "
+                "analyse serving conditions with E2"
+            )
+
+
 def codes(values: Sequence[object], vocabulary: Sequence[str]) -> IntArray:
     index = {name: position for position, name in enumerate(vocabulary)}
     return np.asarray([index[str(v)] for v in values], dtype=np.int64)
@@ -97,11 +129,12 @@ def score(
     predictions: list[Prediction],
     y: IntArray,
     vocabulary: Sequence[str],
-    resamples: ClusterResamples,
+    resamples: Resamples,
     sensitive: int | None = None,
     base_rates: Sequence[int] = (),
     arm: str = BASELINE_ARM,
     setting: str = "static",
+    concurrency: int | None = None,
 ) -> None:
     """Score out-of-fold predictions on the rows they cover, with paired bootstrap CIs.
 
@@ -124,6 +157,7 @@ def score(
                 "session_id": trace.session_id,
                 "request_id": trace.request_id,
                 "regime": regime,
+                "concurrency": concurrency,
                 "task": task,
                 "representation": rep,
                 "fold": prediction.fold,
@@ -147,11 +181,14 @@ def score(
             scorer.metrics, labels.size, subset
         ).items():
             if name == "balanced_accuracy":
-                results.replicates[(regime, task, rep, model, arm, setting)] = replicates
+                results.replicates[(regime, task, rep, model, arm, setting, concurrency)] = (
+                    replicates
+                )
             results.evaluations.append(
                 {
                     "experiment_id": results.experiment_id,
                     "regime": regime,
+                    "concurrency": concurrency,
                     "task": task,
                     "representation": rep,
                     "arm": arm,

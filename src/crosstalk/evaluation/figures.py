@@ -45,6 +45,10 @@ class _Figure(Protocol):
     def savefig(self, *args: object, **kwargs: object) -> object: ...
 
 
+# Load levels take categorical slots 1-6 in fixed order (validated: CVD 9.1, normal 19.6).
+LEVEL_PALETTE = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300")
+LEVEL_MARKERS = ("o", "s", "D", "^", "v", "P")
+
 # Attacker settings reuse slots 1 and 2 (validated: CVD separation 9.2, normal 27.6).
 SETTING_COLORS = {"static": "#2a78d6", "adaptive": "#eb6834"}
 SETTING_MARKERS = {"static": "o", "adaptive": "s"}
@@ -79,6 +83,25 @@ def balanced_accuracy_by_arm(
     )
 
 
+def balanced_accuracy_by_level(
+    points: list[tuple[str, str, float, float, float]], chance: float, model: str, output: Path
+) -> None:
+    """``points`` holds (level label, condition, value, ci_lo, ci_hi); at most six levels."""
+    levels = list(dict.fromkeys(point[0] for point in points))
+    if len(levels) > len(LEVEL_PALETTE):
+        raise ValueError("At most six load levels can be drawn with distinct colors")
+    dot_whisker(
+        points,
+        dict(zip(levels, LEVEL_PALETTE, strict=False)),
+        dict(zip(levels, LEVEL_MARKERS, strict=False)),
+        chance,
+        f"E2: attacker balanced accuracy by load ({model}, R1; D0 static, defenses adaptive)",
+        "Concurrency",
+        output,
+        "95% two-stage bootstrap CI",
+    )
+
+
 def dot_whisker(
     points: list[tuple[str, str, float, float, float]],
     colors: dict[str, str],
@@ -87,6 +110,7 @@ def dot_whisker(
     title: str,
     legend_title: str,
     output: Path,
+    interval: str = "95% cluster-bootstrap CI",
 ) -> None:
     """Dot-and-whisker plot: one column per attacker model, one dot per regime.
 
@@ -134,7 +158,7 @@ def dot_whisker(
         clip_on=False,
     )
     axes.set_xticks(range(len(models)), models, color=INK)
-    axes.set_ylabel("Balanced accuracy (95% cluster-bootstrap CI)", color=INK_SECONDARY)
+    axes.set_ylabel(f"Balanced accuracy ({interval})", color=INK_SECONDARY)
     axes.set_ylim(0, 1)
     axes.set_title(title, color=INK, loc="left")
     axes.grid(axis="y", color=GRID, linewidth=0.6)

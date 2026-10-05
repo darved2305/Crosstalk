@@ -23,6 +23,7 @@ from crosstalk.evaluation.common import (
     feature_rows,
     fmt,
     reportable,
+    require_single,
     score,
     staged_output,
     write_results,
@@ -419,6 +420,7 @@ def run_e0(
     main = TraceSet(
         [t for t in traces.traces if t.labels["role"] == "main" and t.labels["arm"] == BASELINE_ARM]
     )
+    require_single(main, "E0", "concurrency", "stream_interval")
     classes = sorted({str(c) for c in main.column("class")})
     if len(classes) < 2:
         raise ConfigError("E0 needs at least two classes")
@@ -468,7 +470,7 @@ def run_e0(
             "regime": pilot,
             "model": best,
             **power_check(
-                results.replicates[(pilot, "t1", "r1", best, BASELINE_ARM, "static")],
+                results.replicates[(pilot, "t1", "r1", best, BASELINE_ARM, "static", None)],
                 per_class,
                 analysis.planned_per_class,
                 analysis.max_per_class,

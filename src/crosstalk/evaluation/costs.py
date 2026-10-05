@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
-from crosstalk.stats.bootstrap import ClusterResamples, percentile_ci
+from crosstalk.stats.bootstrap import Resamples, percentile_ci
 from crosstalk.traces import observer, oracle
 
 FloatArray = npt.NDArray[np.float64]
@@ -88,7 +88,7 @@ def summarize(
     costs: dict[str, RequestCost],
     request_ids: Sequence[str],
     arms: Sequence[str],
-    resamples: ClusterResamples,
+    resamples: Resamples,
     baseline: str = "a0",
 ) -> dict[str, dict[str, object]]:
     """Per-arm cost percentiles and paired differences against the baseline arm.

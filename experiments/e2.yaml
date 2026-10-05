@@ -1,0 +1,44 @@
+# E2 (PRODUCT.md §12): leakage and defense cost under serving load. Each session alternates
+# concurrency blocks C1 -> C8 -> C32 (repeated over two cycles, drained between blocks) with
+# every arm interleaved in every block; D0 and D2 also run at vLLM stream interval 4.
+# Run two replicate sessions on different days (different seeds), then analyse together.
+# Cap the levels at the concurrency validated by the runtime gate (G2/G3).
+name: e2
+policy_set:
+  - {arm: a0, kind: passthrough}
+  - {arm: a1, kind: bucket_pad, parameters: {first_bucket: 256}}
+  - {arm: a2, kind: window_batch, parameters: {window_ms: 100, max_merge_bytes: 8192}}
+  - {arm: a3, kind: constant_rate, parameters: {interval_ms: 50, record_size: 512, tail_quantum_ticks: 32}}
+  - {arm: a4, kind: hybrid, parameters: {window_ms: 100, max_merge_bytes: 8192, first_bucket: 256}}
+sessions:
+  - experiment_id: e2
+    workload: workloads/v1
+    regime: NAT
+    per_class: 100
+    arms: [a0, a1, a2, a3, a4]
+    concurrency_levels: [1, 8, 32]
+    concurrency: 32
+    cycles: 2
+    stream_interval_variants: [4]
+    stream_interval_arms: [a0, a2]
+    seed: 6101
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+  - experiment_id: e2
+    workload: workloads/v1
+    regime: NAT
+    per_class: 100
+    arms: [a0, a1, a2, a3, a4]
+    concurrency_levels: [1, 8, 32]
+    concurrency: 32
+    cycles: 2
+    stream_interval_variants: [4]
+    stream_interval_arms: [a0, a2]
+    seed: 6102
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+analysis:
+  representations: [r1, r2]
+  bootstrap: 2000
+  primary_model: lgbm
+  primary_representation: r1

@@ -28,6 +28,7 @@ from crosstalk.evaluation.common import (
     feature_rows,
     fmt,
     reportable,
+    require_single,
     score,
     staged_output,
     write_results,
@@ -86,7 +87,7 @@ def _primary(
     results: Results, regime: str, arms: list[str], chance: float, analysis: AnalysisConfig
 ) -> dict[str, Any]:
     model, rep = analysis.primary_model, analysis.primary_representation
-    base_key = (regime, "t1", rep, model, BASELINE_ARM, "static")
+    base_key = (regime, "t1", rep, model, BASELINE_ARM, "static", None)
     base_reps = results.replicates[base_key]
     base = results.value(regime, "t1", rep, model, "balanced_accuracy")
     tests: dict[str, dict[str, Any]] = {}
@@ -96,7 +97,7 @@ def _primary(
             continue
         ratios: dict[str, np.ndarray] = {}
         for setting in SETTINGS:
-            key = (regime, "t1", rep, model, arm, setting)
+            key = (regime, "t1", rep, model, arm, setting, None)
             point = results.value(
                 regime, "t1", rep, model, "balanced_accuracy", arm=arm, setting=setting
             )
@@ -304,6 +305,7 @@ def run_e1(
     session_ids = [str(m["session_id"]) for m in manifests]
     traces = load_traces(root, session_ids)
     main = TraceSet([t for t in traces.traces if t.labels["role"] == "main"], traces.excluded)
+    require_single(main, "E1", "concurrency", "stream_interval")
     arms = sorted({str(a) for a in main.column("arm")})
     if BASELINE_ARM not in arms or len(arms) < 2:
         raise ConfigError("E1 needs the D0 arm and at least one defense arm")
