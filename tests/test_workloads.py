@@ -294,3 +294,20 @@ def test_experiment_configs_parse(path: Path) -> None:
 
     config = ExperimentConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
     assert all(session.experiment_id == config.name for session in config.sessions)
+
+
+@pytest.mark.parametrize("name", ["e1-pilot.yaml", "e1.yaml"])
+def test_experiment_policies_match_the_shaper_policy_file(name: str) -> None:
+    from crosstalk.contracts.config import ExperimentConfig, PolicyConfig
+
+    experiments = SOURCE.parents[3] / "experiments"
+    config = ExperimentConfig.model_validate(
+        yaml.safe_load((experiments / name).read_text(encoding="utf-8"))
+    )
+    shaper = [
+        PolicyConfig.model_validate(item)
+        for item in yaml.safe_load(
+            (experiments / "policies" / "arms.yaml").read_text(encoding="utf-8")
+        )
+    ]
+    assert sorted(config.policy_set, key=lambda p: p.arm) == sorted(shaper, key=lambda p: p.arm)

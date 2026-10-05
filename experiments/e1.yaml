@@ -1,0 +1,34 @@
+# E1 (PRODUCT.md §12): defense effectiveness and cost. Two sessions x 100 per class per arm,
+# all arms interleaved, C=1. The policy set must match the shaper's mounted policy file
+# (experiments/policies/arms.yaml) after its parameters are frozen from the pilots.
+name: e1
+policy_set:
+  - {arm: a0, kind: passthrough}
+  - {arm: a1, kind: bucket_pad, parameters: {first_bucket: 256}}
+  - {arm: a2, kind: window_batch, parameters: {window_ms: 100, max_merge_bytes: 8192}}
+  - {arm: a3, kind: constant_rate, parameters: {interval_ms: 50, record_size: 512, tail_quantum_ticks: 32}}
+  - {arm: a4, kind: hybrid, parameters: {window_ms: 100, max_merge_bytes: 8192, first_bucket: 256}}
+sessions:
+  - experiment_id: e1
+    workload: workloads/v1
+    regime: NAT
+    per_class: 100
+    arms: [a0, a1, a2, a3, a4]
+    concurrency: 1
+    seed: 5201
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+  - experiment_id: e1
+    workload: workloads/v1
+    regime: NAT
+    per_class: 100
+    arms: [a0, a1, a2, a3, a4]
+    concurrency: 1
+    seed: 5202
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+analysis:
+  representations: [r1, r2]
+  bootstrap: 2000
+  primary_model: lgbm
+  primary_representation: r1

@@ -45,8 +45,48 @@ class _Figure(Protocol):
     def savefig(self, *args: object, **kwargs: object) -> object: ...
 
 
+# Attacker settings reuse slots 1 and 2 (validated: CVD separation 9.2, normal 27.6).
+SETTING_COLORS = {"static": "#2a78d6", "adaptive": "#eb6834"}
+SETTING_MARKERS = {"static": "o", "adaptive": "s"}
+
+
 def balanced_accuracy_by_regime(
     points: list[tuple[str, str, float, float, float]], chance: float, output: Path
+) -> None:
+    dot_whisker(
+        points,
+        REGIME_COLORS,
+        REGIME_MARKERS,
+        chance,
+        "E0: topic inference from TLS record features (R1)",
+        "Regime",
+        output,
+    )
+
+
+def balanced_accuracy_by_arm(
+    points: list[tuple[str, str, float, float, float]], chance: float, model: str, output: Path
+) -> None:
+    """``points`` holds (setting, arm, value, ci_lo, ci_hi)."""
+    dot_whisker(
+        points,
+        SETTING_COLORS,
+        SETTING_MARKERS,
+        chance,
+        f"E1: attacker balanced accuracy per defense ({model}, R1)",
+        "Attacker",
+        output,
+    )
+
+
+def dot_whisker(
+    points: list[tuple[str, str, float, float, float]],
+    colors: dict[str, str],
+    markers: dict[str, str],
+    chance: float,
+    title: str,
+    legend_title: str,
+    output: Path,
 ) -> None:
     """Dot-and-whisker plot: one column per attacker model, one dot per regime.
 
@@ -55,7 +95,7 @@ def balanced_accuracy_by_regime(
     import matplotlib.pyplot as plt
 
     models = list(dict.fromkeys(model for _, model, *_ in points))
-    regimes = [r for r in REGIME_COLORS if any(p[0] == r for p in points)]
+    regimes = [r for r in colors if any(p[0] == r for p in points)]
     figure_and_axes: tuple[_Figure, _Axes] = plt.subplots(figsize=(7.5, 4.2), dpi=150)  # type: ignore[assignment]
     figure, axes = figure_and_axes
     axes.set_facecolor(SURFACE)
@@ -71,8 +111,8 @@ def balanced_accuracy_by_regime(
                 [x],
                 [value],
                 yerr=[[value - low], [high - value]],
-                fmt=REGIME_MARKERS[regime],
-                color=REGIME_COLORS[regime],
+                fmt=markers[regime],
+                color=colors[regime],
                 markersize=7,
                 markeredgecolor=SURFACE,
                 markeredgewidth=1.5,
@@ -96,14 +136,14 @@ def balanced_accuracy_by_regime(
     axes.set_xticks(range(len(models)), models, color=INK)
     axes.set_ylabel("Balanced accuracy (95% cluster-bootstrap CI)", color=INK_SECONDARY)
     axes.set_ylim(0, 1)
-    axes.set_title("E0: topic inference from TLS record features (R1)", color=INK, loc="left")
+    axes.set_title(title, color=INK, loc="left")
     axes.grid(axis="y", color=GRID, linewidth=0.6)
     axes.tick_params(colors=MUTED)
     for name in ("top", "right"):
         axes.spines[name].set_visible(False)
     for name in ("left", "bottom"):
         axes.spines[name].set_color(BASELINE)
-    axes.legend(frameon=False, title="Regime", loc="upper left")
+    axes.legend(frameon=False, title=legend_title, loc="upper left")
     output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output, facecolor=SURFACE, bbox_inches="tight")
     plt.close("all")

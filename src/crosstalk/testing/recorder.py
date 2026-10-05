@@ -58,17 +58,23 @@ class RecordingRelay:
     async def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         connection = _Connection(int(writer.get_extra_info("peername")[1]), time.time_ns())
         self.connections.append(connection)
+        writers = [writer]
         try:
             upstream_reader, upstream_writer = await asyncio.open_connection(
                 self.target_host, self.target_port
             )
+            writers.append(upstream_writer)
             await asyncio.gather(
                 self._pump(reader, upstream_writer, connection, -1),
                 self._pump(upstream_reader, writer, connection, 1),
             )
         except OSError:
-            writer.close()
+            pass
         finally:
+            for each in writers:
+                each.close()
+                with suppress(OSError):
+                    await each.wait_closed()
             connection.done.set()
 
     async def _pump(

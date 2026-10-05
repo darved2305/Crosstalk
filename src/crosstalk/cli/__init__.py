@@ -20,6 +20,7 @@ report_app = typer.Typer()
 lab_app = typer.Typer()
 workloads_app = typer.Typer()
 e0_app = typer.Typer()
+e1_app = typer.Typer()
 app.add_typer(schema_app, name="schema")
 app.add_typer(shaper_app, name="shaper")
 app.add_typer(capture_app, name="capture")
@@ -29,6 +30,7 @@ app.add_typer(report_app, name="report")
 app.add_typer(lab_app, name="lab")
 app.add_typer(workloads_app, name="workloads")
 app.add_typer(e0_app, name="e0")
+app.add_typer(e1_app, name="e1")
 
 
 def _load_experiment(path: Path) -> ExperimentConfig:
@@ -197,6 +199,22 @@ def e0_run(
     from crosstalk.evaluation.e0 import run_e0
 
     target = run_e0(root, _load_experiment(experiment), allow_unvalidated, replace)
+    typer.echo(str(target / "report.md"))
+
+
+@e1_app.command("run")
+def e1_run(
+    experiment: Path,
+    root: Path = Path("artifacts"),
+    allow_unvalidated: bool = typer.Option(
+        False, help="Analyse sessions that are not VALID; the report is marked not reportable"
+    ),
+    replace: bool = typer.Option(False, help="Replace an existing experiment output"),
+) -> None:
+    """Static and adaptive attackers per defense arm, paired statistics and cost."""
+    from crosstalk.evaluation.e1 import run_e1
+
+    target = run_e1(root, _load_experiment(experiment), allow_unvalidated, replace)
     typer.echo(str(target / "report.md"))
 
 

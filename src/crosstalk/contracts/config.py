@@ -110,6 +110,10 @@ class AnalysisConfig(StrictModel):
     target_half_width: float = Field(default=0.05, gt=0, lt=1)
     sensitive_base_rates: list[int] = Field(default_factory=lambda: [10, 100, 1000])
     seed: int = Field(default=0, ge=0)
+    # Pre-declared before collection (E1/E2 primary comparisons, Holm within the family).
+    primary_model: str = "lgbm"
+    primary_representation: str = "r1"
+    alpha: float = Field(default=0.05, gt=0, lt=1)
 
 
 class ExperimentConfig(StrictModel):

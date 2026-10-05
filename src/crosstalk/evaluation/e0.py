@@ -4,25 +4,29 @@ Reads only observer tables and labels (through ``crosstalk.features.traces``); n
 oracle or restricted stores.
 """
 
-import json
-import shutil
 from collections import Counter, defaultdict
-from collections.abc import Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import pyarrow as pa
 
-from crosstalk.attacks.models import FloatArray, Model, resolve
-from crosstalk.attacks.protocols import Design, Prediction, cross_validate
-from crosstalk.attacks.splits import IntArray, family_folds
+from crosstalk.attacks.models import Model, resolve
+from crosstalk.attacks.protocols import Design, cross_validate
+from crosstalk.attacks.splits import family_folds
 from crosstalk.common.errors import ConfigError, ValidationError
-from crosstalk.common.ids import new_ulid
 from crosstalk.contracts.config import AnalysisConfig, ExperimentConfig
-from crosstalk.contracts.parquet import write_table
-from crosstalk.contracts.tables import schema_for
+from crosstalk.evaluation.common import (
+    BASELINE_ARM,
+    Results,
+    codes,
+    discover,
+    feature_rows,
+    fmt,
+    reportable,
+    score,
+    staged_output,
+    write_results,
+)
 from crosstalk.evaluation.figures import balanced_accuracy_by_regime
 from crosstalk.features.extract import FEATURE_SCHEMA_VERSION, R1_NAMES, matrix, r1
 from crosstalk.features.traces import TraceSet, load_traces
@@ -39,123 +43,6 @@ from crosstalk.stats.metrics import Scorer
 LEARNING_FRACTIONS = (0.25, 0.5, 0.75, 1.0)
 REGIME_ORDER = ("NAT", "MATCH-P", "MATCH-PR")
 NOISE_FEATURES = ("resp_count", "duration_ms", "ttft_ms")
-BASELINE_ARM = "a0"
-
-
-@dataclass(slots=True)
-class Results:
-    experiment_id: str
-    bootstrap: int
-    evaluations: list[dict[str, object]] = field(default_factory=lambda: [])
-    predictions: list[dict[str, object]] = field(default_factory=lambda: [])
-    features: dict[str, list[dict[str, object]]] = field(default_factory=lambda: {})
-    replicates: dict[tuple[str, str, str, str], FloatArray] = field(default_factory=lambda: {})
-    summary: dict[str, Any] = field(default_factory=lambda: {})
-
-    def metric(self, regime: str, task: str, rep: str, model: str, name: str) -> dict[str, object]:
-        for row in self.evaluations:
-            if (row["regime"], row["task"], row["representation"], row["model"], row["metric"]) == (
-                regime,
-                task,
-                rep,
-                model,
-                name,
-            ):
-                return row
-        raise KeyError((regime, task, rep, model, name))
-
-
-def discover(root: Path, experiment_id: str) -> list[dict[str, object]]:
-    manifests: list[dict[str, object]] = []
-    for path in sorted((root / "sessions").glob("*/manifest.json")):
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-        if manifest["experiment_id"] == experiment_id:
-            manifests.append(manifest)
-    return manifests
-
-
-def _codes(values: Sequence[object], vocabulary: Sequence[str]) -> IntArray:
-    index = {name: position for position, name in enumerate(vocabulary)}
-    return np.asarray([index[str(v)] for v in values], dtype=np.int64)
-
-
-def _score(
-    results: Results,
-    traces: TraceSet,
-    regime: str,
-    task: str,
-    rep: str,
-    predictions: list[Prediction],
-    y: IntArray,
-    vocabulary: Sequence[str],
-    resamples: ClusterResamples,
-    sensitive: int | None = None,
-    base_rates: Sequence[int] = (),
-) -> None:
-    by_model: dict[str, dict[int, FloatArray]] = defaultdict(dict)
-    for prediction in predictions:
-        seeds = by_model[prediction.model]
-        if prediction.seed not in seeds:
-            seeds[prediction.seed] = np.full((y.size, len(vocabulary)), np.nan)
-        seeds[prediction.seed][prediction.row] = prediction.proba
-        results.predictions.append(
-            {
-                "session_id": traces.traces[prediction.row].session_id,
-                "request_id": traces.traces[prediction.row].request_id,
-                "regime": regime,
-                "task": task,
-                "representation": rep,
-                "fold": prediction.fold,
-                "arm": BASELINE_ARM,
-                "setting": "static",
-                "model": prediction.model,
-                "seed": prediction.seed,
-                "y_true": vocabulary[int(y[prediction.row])],
-                "proba": [float(v) for v in prediction.proba],
-            }
-        )
-    n_families = len({t.labels["family_id"] for t in traces.traces})
-    for model, seeds in by_model.items():
-        probas = [seeds[seed] for seed in sorted(seeds)]
-        if any(np.isnan(p).any() for p in probas):
-            raise ValidationError(f"{model} left rows without an out-of-fold prediction")
-        scorer = Scorer(y, probas, len(vocabulary), sensitive, tuple(base_rates))
-        for name, (value, low, high, replicates) in bootstrap_metrics(
-            scorer.metrics, y.size, resamples
-        ).items():
-            if name == "balanced_accuracy":
-                results.replicates[(regime, task, rep, model)] = replicates
-            results.evaluations.append(
-                {
-                    "experiment_id": results.experiment_id,
-                    "regime": regime,
-                    "task": task,
-                    "representation": rep,
-                    "arm": BASELINE_ARM,
-                    "setting": "static",
-                    "model": model,
-                    "metric": name,
-                    "value": value,
-                    "ci_lo": low,
-                    "ci_hi": high,
-                    "n": int(y.size),
-                    "n_families": n_families,
-                    "B": resamples.b,
-                }
-            )
-
-
-def _feature_rows(traces: TraceSet, x: FloatArray, names: Sequence[str]) -> list[dict[str, object]]:
-    return [
-        {
-            "session_id": trace.session_id,
-            "request_id": trace.request_id,
-            "arm": trace.labels["arm"],
-            "feature_names": list(names),
-            "values": [float(v) for v in row],
-        }
-        for trace, row in zip(traces.traces, x, strict=True)
-    ]
 
 
 def _attack_regime(
@@ -170,27 +57,27 @@ def _attack_regime(
     families = [str(f) for f in traces.column("family_id")]
     labels = [str(c) for c in traces.column("class")]
     arms = [str(a) for a in traces.column("arm")]
-    y = _codes(labels, classes)
+    y = codes(labels, classes)
     folds = family_folds(families, labels, analysis.outer_folds, analysis.seed)
     resamples = ClusterResamples.draw(families, labels, analysis.bootstrap, analysis.seed)
     for rep in analysis.representations:
         x, names = matrix(traces, rep)
-        results.features[f"{regime}-{rep}"] = _feature_rows(traces, x, names)
+        results.features[f"{regime}-{rep}"] = feature_rows(traces, x, names)
         design = Design(x, y, families, labels, arms, folds, len(classes))
         predictions = cross_validate(
             design, models, analysis.seeds, analysis.inner_folds, BASELINE_ARM, BASELINE_ARM
         )
-        _score(results, traces, regime, "t1", rep, predictions, y, classes, resamples)
+        score(results, traces, regime, "t1", rep, predictions, y, classes, resamples)
     if sensitive_class is not None and "r1" in analysis.representations:
         binary = ["sensitive" if c == sensitive_class else "background" for c in labels]
         vocabulary = ["background", "sensitive"]
-        y2 = _codes(binary, vocabulary)
+        y2 = codes(binary, vocabulary)
         x, _ = matrix(traces, "r1")
         design = Design(x, y2, families, labels, arms, folds, 2)
         predictions = cross_validate(
             design, models, analysis.seeds, analysis.inner_folds, BASELINE_ARM, BASELINE_ARM
         )
-        _score(
+        score(
             results,
             traces,
             regime,
@@ -222,7 +109,7 @@ def _null_control(
     for permutation in range(analysis.null_permutations):
         seed = analysis.seed + 10_000 + permutation
         permuted = permute_family_classes(families, labels, seed)
-        y = _codes(permuted, classes)
+        y = codes(permuted, classes)
         folds = family_folds(families, permuted, analysis.outer_folds, seed)
         design = Design(x, y, families, permuted, arms, folds, len(classes))
         predictions = cross_validate(
@@ -270,7 +157,7 @@ def _learning_curve(
     families = [str(f) for f in traces.column("family_id")]
     labels = [str(c) for c in traces.column("class")]
     arms = [str(a) for a in traces.column("arm")]
-    y = _codes(labels, classes)
+    y = codes(labels, classes)
     x, _ = matrix(traces, "r1")
     folds = family_folds(families, labels, analysis.outer_folds, analysis.seed)
     resamples = ClusterResamples.draw(families, labels, analysis.null_bootstrap, analysis.seed)
@@ -333,13 +220,6 @@ def _noise_floor(traces: TraceSet, analysis: AnalysisConfig) -> dict[str, object
     return result
 
 
-def _fmt(row: dict[str, object]) -> str:
-    value, low, high = (float(str(row[key])) for key in ("value", "ci_lo", "ci_hi"))
-    if np.isnan(value):
-        return "n/a"
-    return f"{value:.3f} [{low:.3f}, {high:.3f}]"
-
-
 def _report(results: Results, analysis: AnalysisConfig, figure: str | None) -> str:
     summary = results.summary
     lines = [f"# E0 report: `{results.experiment_id}`", ""]
@@ -392,7 +272,7 @@ def _report(results: Results, analysis: AnalysisConfig, figure: str | None) -> s
         for rep in analysis.representations:
             for model in models:
                 cells = [
-                    _fmt(results.metric(regime, "t1", rep, model, metric))
+                    fmt(results.metric(regime, "t1", rep, model, metric))
                     for metric in ("balanced_accuracy", "macro_f1", "macro_pr_auc", "log_loss")
                 ]
                 lines.append(f"| {regime} | {rep} | {model} | " + " | ".join(cells) + " |")
@@ -417,9 +297,9 @@ def _report(results: Results, analysis: AnalysisConfig, figure: str | None) -> s
         for regime in summary["regimes"]:
             for model in models:
                 for rate in analysis.sensitive_base_rates:
-                    cells = [_fmt(results.metric(regime, "t2", "r1", model, f"pr_auc_1to{rate}"))]
+                    cells = [fmt(results.metric(regime, "t2", "r1", model, f"pr_auc_1to{rate}"))]
                     cells += [
-                        _fmt(
+                        fmt(
                             results.metric(
                                 regime, "t2", "r1", model, f"precision_at_recall{level}_1to{rate}"
                             )
@@ -519,11 +399,6 @@ def _report(results: Results, analysis: AnalysisConfig, figure: str | None) -> s
     return "\n".join(lines)
 
 
-def _write(path: Path, table: str, rows: list[dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_table(pa.Table.from_pylist(rows, schema=schema_for(table)), path)
-
-
 def run_e0(
     root: Path,
     config: ExperimentConfig,
@@ -536,14 +411,7 @@ def run_e0(
     manifests = discover(root, config.name)
     if not manifests:
         raise ValidationError(f"No sessions found for experiment {config.name}")
-    unreportable = [
-        str(m["session_id"]) for m in manifests if m["status"] != "VALID" or m["git_dirty"]
-    ]
-    if unreportable and not allow_unvalidated:
-        raise ValidationError(
-            f"Sessions are not reportable (not VALID or dirty): {unreportable}. "
-            "Use --allow-unvalidated for a development run."
-        )
+    is_reportable = reportable(manifests, allow_unvalidated)
     target = root / "experiments" / config.name
     if target.exists() and not replace:
         raise ValidationError(f"Experiment output already exists: {target} (use --replace)")
@@ -600,7 +468,7 @@ def run_e0(
             "regime": pilot,
             "model": best,
             **power_check(
-                results.replicates[(pilot, "t1", "r1", best)],
+                results.replicates[(pilot, "t1", "r1", best, BASELINE_ARM, "static")],
                 per_class,
                 analysis.planned_per_class,
                 analysis.max_per_class,
@@ -610,7 +478,7 @@ def run_e0(
     results.summary = {
         "experiment_id": config.name,
         "config_sha256": config.sha256(),
-        "reportable": not unreportable,
+        "reportable": is_reportable,
         "sessions": [
             {
                 "session_id": m["session_id"],
@@ -642,12 +510,7 @@ def run_e0(
         "learning_curve": curve,
         "feature_schema_version": FEATURE_SCHEMA_VERSION,
     }
-    staging = root / "experiments" / f".tmp-{new_ulid()}"
-    try:
-        for name, rows in results.features.items():
-            _write(staging / "features" / f"{name}.parquet", "features", rows)
-        _write(staging / "predictions" / "predictions.parquet", "predictions", results.predictions)
-        _write(staging / "evaluations" / "evaluations.parquet", "evaluations", results.evaluations)
+    with staged_output(root, config.name, replace) as staging:
         figure: str | None = None
         points = [
             (
@@ -673,14 +536,5 @@ def run_e0(
                 1 / len(classes),
                 staging / figure,
             )
-        (staging / "summary.json").write_text(
-            json.dumps(results.summary, indent=2, default=float), encoding="utf-8"
-        )
-        (staging / "report.md").write_text(_report(results, analysis, figure), encoding="utf-8")
-        if target.exists():
-            shutil.rmtree(target)
-        staging.replace(target)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
+        write_results(staging, results, lambda: _report(results, analysis, figure))
     return target

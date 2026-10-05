@@ -102,8 +102,14 @@ forbidden_modules = ["crosstalk.traces.oracle", "crosstalk.testing"]
 [[tool.importlinter.contracts]]
 name = "Attacker sees only observer data and labels"
 type = "forbidden"
-source_modules = ["crosstalk.features", "crosstalk.attacks", "crosstalk.stats", "crosstalk.evaluation"]
-forbidden_modules = ["crosstalk.traces.oracle", "crosstalk.loadgen", "crosstalk.shaper", "crosstalk.workloads", "crosstalk.capture", "crosstalk.validation"]
+source_modules = ["crosstalk.features", "crosstalk.attacks", "crosstalk.stats"]
+forbidden_modules = ["crosstalk.traces.oracle", "crosstalk.loadgen", "crosstalk.shaper", "crosstalk.workloads", "crosstalk.capture", "crosstalk.validation", "crosstalk.evaluation"]
+
+[[tool.importlinter.contracts]]
+name = "Evaluate stage may read the oracle, never text or the data path"
+type = "forbidden"
+source_modules = ["crosstalk.evaluation"]
+forbidden_modules = ["crosstalk.loadgen", "crosstalk.shaper", "crosstalk.workloads", "crosstalk.capture", "crosstalk.validation"]
 
 [[tool.importlinter.contracts]]
 name = "Capture has no ML"

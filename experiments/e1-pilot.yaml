@@ -1,0 +1,24 @@
+# E1 pilot: all arms interleaved per request, D0 static vs every defense static and adaptive,
+# C=1, 60 requests per class per arm. Freezes the arm parameters before the full E1.
+name: e1-pilot
+policy_set:
+  - {arm: a0, kind: passthrough}
+  - {arm: a1, kind: bucket_pad, parameters: {first_bucket: 256}}
+  - {arm: a2, kind: window_batch, parameters: {window_ms: 100, max_merge_bytes: 8192}}
+  - {arm: a3, kind: constant_rate, parameters: {interval_ms: 50, record_size: 512, tail_quantum_ticks: 32}}
+  - {arm: a4, kind: hybrid, parameters: {window_ms: 100, max_merge_bytes: 8192, first_bucket: 256}}
+sessions:
+  - experiment_id: e1-pilot
+    workload: workloads/v1
+    regime: NAT
+    per_class: 60
+    arms: [a0, a1, a2, a3, a4]
+    concurrency: 1
+    seed: 5101
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+analysis:
+  representations: [r1, r2]
+  bootstrap: 2000
+  primary_model: lgbm
+  primary_representation: r1
