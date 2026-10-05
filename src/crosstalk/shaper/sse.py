@@ -25,34 +25,54 @@ class SSEParser:
 
     def feed(self, chunk: bytes) -> list[SSEEvent]:
         emitted: list[SSEEvent] = []
-        for byte in chunk:
-            if self._at_start:
-                self._bom.append(byte)
-                if len(self._bom) < 3 and b"\xef\xbb\xbf".startswith(self._bom):
-                    continue
-                prefix = bytes(self._bom)
-                self._bom.clear()
-                self._at_start = False
-                if prefix == b"\xef\xbb\xbf":
-                    self._raw.extend(prefix)
-                    continue
-                emitted.extend(self.feed(prefix))
+        index = 0
+        # A byte-order mark is only possible in the first three bytes of the stream.
+        while self._at_start and index < len(chunk):
+            self._bom.append(chunk[index])
+            index += 1
+            if len(self._bom) < 3 and b"\xef\xbb\xbf".startswith(self._bom):
                 continue
-            self._raw.append(byte)
-            if len(self._raw) > self._max_event_bytes:
-                raise ValidationError("SSE event exceeds configured bound")
-            if self._cr:
-                self._cr = False
-                if byte == 10:
-                    continue
-            if byte == 13:
-                emitted.extend(self._finish_line())
-                self._cr = True
-            elif byte == 10:
-                emitted.extend(self._finish_line())
+            prefix = bytes(self._bom)
+            self._bom.clear()
+            self._at_start = False
+            if prefix == b"\xef\xbb\xbf":
+                self._raw.extend(prefix)
             else:
-                self._line.append(byte)
+                emitted.extend(self._scan(prefix))
+        emitted.extend(self._scan(chunk[index:]))
         return emitted
+
+    def _scan(self, chunk: bytes) -> list[SSEEvent]:
+        """Line-at-a-time parsing; identical output to a byte-at-a-time state machine."""
+        emitted: list[SSEEvent] = []
+        index = 0
+        size = len(chunk)
+        while index < size:
+            if self._cr:
+                # LF after CR completes a CRLF that already ended the line.
+                self._cr = False
+                if chunk[index] == 10:
+                    self._grow(chunk[index : index + 1])
+                    index += 1
+                    continue
+            cr = chunk.find(b"\r", index)
+            lf = chunk.find(b"\n", index)
+            end = min(cr, lf) if cr >= 0 and lf >= 0 else max(cr, lf)
+            if end < 0:
+                self._grow(chunk[index:])
+                self._line.extend(chunk[index:])
+                break
+            self._grow(chunk[index : end + 1])
+            self._line.extend(chunk[index:end])
+            emitted.extend(self._finish_line())
+            self._cr = chunk[end] == 13
+            index = end + 1
+        return emitted
+
+    def _grow(self, data: bytes) -> None:
+        self._raw.extend(data)
+        if len(self._raw) > self._max_event_bytes:
+            raise ValidationError("SSE event exceeds configured bound")
 
     def _finish_line(self) -> list[SSEEvent]:
         line = bytes(self._line)
