@@ -8,6 +8,7 @@ from typing import cast
 import h11
 
 ECHO_TOKEN_DELAY_MS = 5.0
+SSE_END = bytes([10, 10])
 
 
 def prompt_words(payload: dict[str, object]) -> list[str]:
@@ -97,18 +98,31 @@ async def _handle(
             )
         )
         await writer.drain()
-        for index, text in enumerate(tokens):
-            event = {
-                "id": "mock",
-                "object": "chat.completion.chunk",
-                "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
-                "mock_sent_ns": time.monotonic_ns(),
-            }
-            raw = b"data: " + json.dumps(event, separators=(",", ":")).encode() + b"\n\n"
+        echo = "mock_events" not in payload
+        header: dict[str, object] = {"id": "mock", "object": "chat.completion.chunk"}
+        if echo:
+            # vLLM's shape: a role event, content deltas, then a finish event and usage.
+            header.update({"created": int(time.time()), "model": str(payload.get("model", "mock"))})
+
+        async def send(choice: dict[str, object], **extra: object) -> None:
+            event = {**header, "choices": [{"index": 0, **choice}], **extra}
+            raw = b"data: " + json.dumps(event, separators=(",", ":")).encode() + SSE_END
             writer.write(connection.send(h11.Data(data=raw)))
             await writer.drain()
+
+        if echo:
+            await send({"delta": {"role": "assistant", "content": ""}, "finish_reason": None})
+        for index, text in enumerate(tokens):
+            await send(
+                {"delta": {"content": text}, "finish_reason": None},
+                mock_sent_ns=time.monotonic_ns(),
+            )
             if delays[index] and index < n - 1:
                 await asyncio.sleep(delays[index])
+        if echo:
+            await send(
+                {"delta": {}, "finish_reason": "length" if payload.get("min_tokens") else "stop"}
+            )
         usage: dict[str, object] = {
             "id": "mock",
             "object": "chat.completion.chunk",
