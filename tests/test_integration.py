@@ -127,7 +127,8 @@ async def test_tls_passthrough_content_and_records(tmp_path: Path) -> None:
         for file in (tmp_path / "oracle").glob("*.ndjson")
         for line in file.read_text().splitlines()
     ]
-    assert [row["kind"] for row in rows] == ["content"] * 6 + ["terminator"]
+    assert [row["kind"] for row in rows] == ["headers"] + ["content"] * 6 + ["terminator"]
+    assert [row["seq"] for row in rows] == list(range(8))
 
 
 @pytest.mark.asyncio

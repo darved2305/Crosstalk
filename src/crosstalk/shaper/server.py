@@ -125,7 +125,26 @@ async def handle_connection(
         ) as response:
             if response.status != 200:
                 raise UpstreamError(f"Upstream returned {response.status}")
-            writer.write(response_headers(200))
+            head = response_headers(200)
+            writer.write(head)
+            # The header block is its own write and therefore its own TLS record; log it so
+            # every client-visible response record has an emission.
+            await emissions.record(
+                Emission(
+                    request_id,
+                    sequence,
+                    time.monotonic_ns(),
+                    "headers",
+                    len(head),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    "a0",
+                )
+            )
+            sequence += 1
             await _drain(writer, settings.stall_timeout, metrics)
             headers_sent = True
             parser = SSEParser()
