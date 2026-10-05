@@ -32,12 +32,9 @@ def parse_records(stream: TCPStream) -> list[TLSRecord]:
         end = offset + 5 + length
         if end > len(data):
             raise ReconstructionError(f"Incomplete TLS record at offset {offset}")
-        times = stream.first_seen_ns[offset:end]
-        frames = stream.completion_frames[offset:end]
-        end_ns = max(times)
-        completion_frame = frames[times.index(end_ns)]
+        start_ns, end_ns, completion_frame = stream.span(offset, end)
         result.append(
-            TLSRecord(len(result), offset, content_type, length, times[0], end_ns, completion_frame)
+            TLSRecord(len(result), offset, content_type, length, start_ns, end_ns, completion_frame)
         )
         offset = end
     if offset != len(data):

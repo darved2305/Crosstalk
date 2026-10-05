@@ -21,7 +21,7 @@ def test_out_of_order_retransmission_overlap_and_timestamps() -> None:
     stream.add(packet(103, b"cdef", t=4, frame=4))
     stream.add(packet(107, b"", FIN))
     assert bytes(stream.data) == b"abcdef"
-    assert stream.first_seen_ns == [3, 3, 3, 3, 2, 2]
+    assert list(stream.first_seen_ns) == [3, 3, 3, 3, 2, 2]
     assert stream.retransmitted_bytes == 4
     assert stream.complete
     assert not stream.overlap_conflict
