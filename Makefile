@@ -1,6 +1,6 @@
 .PHONY: bootstrap lint format-check typecheck imports test check lab-certs lab-up
 bootstrap:
-	uv sync --locked
+	uv sync --locked --all-extras
 lint:
 	uv run ruff check .
 format-check:

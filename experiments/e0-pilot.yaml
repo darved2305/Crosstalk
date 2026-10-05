@@ -1,0 +1,21 @@
+# E0 pilot: NAT, D0, C=1, 60 requests per class.
+# Calibrates timing, the D1 ladder and the power check. Development result only.
+# Build the corpus first, on the host, with the served tokenizer at a pinned revision:
+#   uv run crosstalk workloads build --tokenizer Qwen/Qwen2.5-1.5B-Instruct --revision <sha> \
+#     --output artifacts/workloads/v1
+name: e0-pilot
+policy_set:
+  - arm: a0
+    kind: passthrough
+sessions:
+  - experiment_id: e0-pilot
+    workload: workloads/v1
+    regime: NAT
+    per_class: 60
+    concurrency: 1
+    seed: 3001
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+analysis:
+  bootstrap: 2000
+  null_permutations: 20

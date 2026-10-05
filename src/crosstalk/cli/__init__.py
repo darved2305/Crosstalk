@@ -18,6 +18,8 @@ reconstruct_app = typer.Typer()
 session_app = typer.Typer()
 report_app = typer.Typer()
 lab_app = typer.Typer()
+workloads_app = typer.Typer()
+e0_app = typer.Typer()
 app.add_typer(schema_app, name="schema")
 app.add_typer(shaper_app, name="shaper")
 app.add_typer(capture_app, name="capture")
@@ -25,6 +27,14 @@ app.add_typer(reconstruct_app, name="reconstruct")
 app.add_typer(session_app, name="session")
 app.add_typer(report_app, name="report")
 app.add_typer(lab_app, name="lab")
+app.add_typer(workloads_app, name="workloads")
+app.add_typer(e0_app, name="e0")
+
+
+def _load_experiment(path: Path) -> ExperimentConfig:
+    import yaml
+
+    return ExperimentConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
 class _Uvloop(Protocol):
@@ -99,6 +109,7 @@ def reconstruct_validate(session_id: str, root: Path = Path("artifacts")) -> Non
     fidelity = json.loads((session / "validation" / "emission_fidelity.json").read_text())
     keylog_path = session / "validation" / "keylog_check.json"
     checks = {
+        **manifest.validation,
         "tshark": bool(tshark["exact"]),
         "emissions": fidelity["exact_fraction"] >= 0.9999,
     }
@@ -121,6 +132,72 @@ def session_run(
     from crosstalk.loadgen.session import run_plan
 
     _run(run_plan(plan, root, host, ca_file))
+
+
+@session_app.command("plan")
+def session_plan(
+    experiment: Path,
+    output: Path,
+    index: int = 0,
+    root: Path = Path("artifacts"),
+) -> None:
+    """Write the deterministic slot plan of one session for inspection."""
+    import pyarrow as pa
+
+    from crosstalk.contracts.parquet import write_table
+    from crosstalk.contracts.tables import schema_for
+    from crosstalk.workloads.corpus import load_corpus
+    from crosstalk.workloads.planner import plan_session
+
+    config = _load_experiment(experiment)
+    plan = config.sessions[index]
+    corpus = None
+    if plan.workload is not None:
+        workload = Path(plan.workload)
+        corpus = load_corpus(workload if workload.is_absolute() else root / workload)
+    planned = plan_session(plan, corpus)
+    rows = [{"session_id": "", **row} for row in planned.rows]
+    write_table(pa.Table.from_pylist(rows, schema=schema_for("plan")), output)
+    typer.echo(json.dumps({"slots": len(rows), "plan_sha256": planned.sha256()}))
+
+
+@workloads_app.command("build")
+def workloads_build(
+    source: Path = Path("workloads/corpus/v1/corpus.yaml"),
+    output: Path = Path("artifacts/workloads/v1"),
+    tokenizer: str = typer.Option(
+        ..., help="Served model ID (Hugging Face), or 'whitespace' for mock-only development"
+    ),
+    revision: str | None = typer.Option(None, help="Pinned tokenizer revision (required for HF)"),
+) -> None:
+    """Render, check and hash the prompt corpus with the served tokenizer."""
+    from crosstalk.workloads.corpus import build
+    from crosstalk.workloads.tokens import HuggingFaceCounter, TokenCounter, WhitespaceCounter
+
+    counter: TokenCounter
+    if tokenizer == "whitespace":
+        counter = WhitespaceCounter()
+    elif revision is None:
+        raise typer.BadParameter("--revision is required for a model tokenizer")
+    else:
+        counter = HuggingFaceCounter(tokenizer, revision)
+    typer.echo(json.dumps(build(source, output, counter), indent=2))
+
+
+@e0_app.command("run")
+def e0_run(
+    experiment: Path,
+    root: Path = Path("artifacts"),
+    allow_unvalidated: bool = typer.Option(
+        False, help="Analyse sessions that are not VALID; the report is marked not reportable"
+    ),
+    replace: bool = typer.Option(False, help="Replace an existing experiment output"),
+) -> None:
+    """Features, attackers, statistics and report for every session of an E0 experiment."""
+    from crosstalk.evaluation.e0 import run_e0
+
+    target = run_e0(root, _load_experiment(experiment), allow_unvalidated, replace)
+    typer.echo(str(target / "report.md"))
 
 
 @lab_app.command("certs")

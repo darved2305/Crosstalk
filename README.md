@@ -4,7 +4,7 @@
 
 > In telephony, *crosstalk* is a signal coupling into a channel that was meant to be isolated. Here the encrypted content of an LLM response couples into the size-and-timing channel that TLS does not hide.
 
-**Status:** research and architecture complete (v2.0 docs, 2026-09-19). The initial Python measurement instrument is under implementation; local fixture and mock-TLS tests pass, while the Linux capture laboratory remains unvalidated.
+**Status:** research and architecture complete (v2.0 docs, 2026-09-19). The Python measurement instrument and the E0 attack pipeline (corpus, planner, features, attackers, statistics, report) are implemented and tested end to end against the mock upstream; the Linux capture laboratory remains unvalidated, so no E0 data has been collected. See [`docs/experiments/e0-calibration.md`](docs/experiments/e0-calibration.md).
 
 ## The question
 

@@ -1,0 +1,35 @@
+# E0 calibration (PRODUCT.md §12): D0 only, C=1, NAT vs MATCH-P vs MATCH-PR at 200/class.
+# Pre-freeze runs are development results; the reportable E0 is re-collected under data-v1.
+name: e0
+policy_set:
+  - arm: a0
+    kind: passthrough
+sessions:
+  - experiment_id: e0
+    workload: workloads/v1
+    regime: NAT
+    per_class: 200
+    concurrency: 1
+    seed: 3101
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+  - experiment_id: e0
+    workload: workloads/v1
+    regime: MATCH-P
+    per_class: 200
+    concurrency: 1
+    seed: 3102
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+  - experiment_id: e0
+    workload: workloads/v1
+    regime: MATCH-PR
+    per_class: 200
+    concurrency: 1
+    seed: 3103
+    model: Qwen/Qwen2.5-1.5B-Instruct
+    validation: false
+analysis:
+  bootstrap: 2000
+  null_permutations: 20
+  planned_per_class: 200

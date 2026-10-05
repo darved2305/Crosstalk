@@ -20,6 +20,17 @@ dependencies = [
 crosstalk = "crosstalk.cli:app"
 crosstalk-mock = "crosstalk.testing.mock_upstream:main"
 
+[project.optional-dependencies]
+ml = [
+    "lightgbm>=4.6,<5",
+    "numpy>=2.2,<3",
+    "scikit-learn>=1.7,<2",
+    "scipy>=1.15,<2",
+]
+workloads = [
+    "tokenizers>=0.21,<1",
+]
+
 [dependency-groups]
 dev = [
   "cryptography>=44,<49",
@@ -87,7 +98,19 @@ source_modules = ["crosstalk.traces.observer"]
 forbidden_modules = ["crosstalk.traces.oracle", "crosstalk.testing"]
 
 [[tool.importlinter.contracts]]
+name = "Attacker sees only observer data and labels"
+type = "forbidden"
+source_modules = ["crosstalk.features", "crosstalk.attacks", "crosstalk.stats", "crosstalk.evaluation"]
+forbidden_modules = ["crosstalk.traces.oracle", "crosstalk.loadgen", "crosstalk.shaper", "crosstalk.workloads", "crosstalk.capture", "crosstalk.validation"]
+
+[[tool.importlinter.contracts]]
+name = "Capture has no ML"
+type = "forbidden"
+source_modules = ["crosstalk.capture"]
+forbidden_modules = ["crosstalk.features", "crosstalk.attacks", "crosstalk.stats", "crosstalk.evaluation"]
+
+[[tool.importlinter.contracts]]
 name = "Testing isolation"
 type = "forbidden"
-source_modules = ["crosstalk.cli", "crosstalk.common", "crosstalk.contracts", "crosstalk.shaper", "crosstalk.capture", "crosstalk.loadgen", "crosstalk.traces", "crosstalk.reporting"]
+source_modules = ["crosstalk.cli", "crosstalk.common", "crosstalk.contracts", "crosstalk.shaper", "crosstalk.capture", "crosstalk.loadgen", "crosstalk.traces", "crosstalk.reporting", "crosstalk.workloads", "crosstalk.features", "crosstalk.attacks", "crosstalk.stats", "crosstalk.evaluation"]
 forbidden_modules = ["crosstalk.testing"]
