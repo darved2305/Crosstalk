@@ -1,0 +1,36 @@
+name: benchmark-smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  mock-wire-smoke:
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --all-extras
+      - run: uv run crosstalk lab certs
+      - run: docker compose -f deploy/compose/lab.yml --profile mock up -d --build --wait
+      - run: uv run crosstalk lab provenance
+      - run: uv run pytest tests/test_e2e_e0.py tests/test_e2e_e1.py tests/test_e2e_e2.py -q
+      - name: Capture service diagnostics
+        if: always()
+        run: docker compose -f deploy/compose/lab.yml --profile mock logs --no-color > benchmark-compose.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-smoke-${{ github.run_id }}
+          path: |
+            benchmark-compose.log
+            artifacts/lab/
+          if-no-files-found: warn
+      - if: always()
+        run: docker compose -f deploy/compose/lab.yml --profile mock down -v

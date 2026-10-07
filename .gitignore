@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+deploy/compose/platform.env
 *.pem
 *.key
 *.p12
@@ -44,6 +45,7 @@ env/
 .coverage
 .coverage.*
 htmlcov/
+coverage.xml
 .ipynb_checkpoints/
 
 # ---- Node / Next.js ----

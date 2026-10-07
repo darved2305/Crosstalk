@@ -1,23 +1,104 @@
 name: ci
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
 jobs:
-  quality:
+  python-quality:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          # gitleaks scans the pushed commit range, which needs the parent history.
-          fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - run: uv sync --locked --all-extras
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pyright
       - run: uv run lint-imports
-      - run: uv run pytest
+      - run: uv run crosstalk api openapi --output docs/openapi.json
+      - run: git diff --exit-code -- docs/openapi.json
+      - run: uv run alembic upgrade head --sql > /tmp/crosstalk-migrations.sql
+
+  python-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --all-extras
+      - run: uv run pytest --cov=crosstalk --cov-report=term --cov-report=xml --cov-fail-under=80 -W error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-coverage
+          path: coverage.xml
+
+  console:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/console/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  deployment-static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.6
+      - run: terraform -chdir=infra/terraform init -backend=false
+      - run: terraform -chdir=infra/terraform fmt -recursive -check
+      - run: terraform -chdir=infra/terraform validate
       - run: docker compose -f deploy/compose/lab.yml --profile mock config --quiet
       - run: docker compose -f deploy/compose/lab.yml --profile gpu config --quiet
       - run: docker compose -f deploy/compose/lab.yml --profile mock --profile impaired config --quiet
+      - run: docker compose -f deploy/compose/platform.yml config --quiet
+        env:
+          CT_POSTGRES_PASSWORD: ci-only-url-safe-password
+          CT_API_OPERATOR_TOKEN: ci-only-operator-token-at-least-32-characters
+          CT_API_ORACLE_TOKEN: ci-only-oracle-token-at-least-32-characters
+      - run: bash -n deploy/gce/gpu-startup.sh deploy/gce/client-startup.sh
+
+  security:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif

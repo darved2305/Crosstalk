@@ -53,6 +53,7 @@ dev = [
   "pyright>=1.1.400,<2",
   "pytest>=8.4,<10",
   "pytest-asyncio>=1.0,<2",
+  "pytest-cov>=6,<8",
   "ruff>=0.12,<1",
 ]
 
