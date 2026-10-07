@@ -1,0 +1,6 @@
+.next
+node_modules
+*.tsbuildinfo
+.env*
+npm-debug.log*
+pnpm-debug.log*
