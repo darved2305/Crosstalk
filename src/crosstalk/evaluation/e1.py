@@ -113,8 +113,9 @@ def _primary(
                 ratios[setting] = (replicates - chance) / (base_reps - chance)
         static = tests[f"{arm}/static"]["rho"]["value"]
         adaptive = tests[f"{arm}/adaptive"]["rho"]["value"]
-        recovery = ratios["adaptive"] - ratios["static"]
-        recovery[~np.isfinite(recovery)] = np.nan
+        recovery = np.full_like(ratios["adaptive"], np.nan)
+        finite = np.isfinite(ratios["adaptive"]) & np.isfinite(ratios["static"])
+        np.subtract(ratios["adaptive"], ratios["static"], out=recovery, where=finite)
         low, high = percentile_ci(recovery)
         defined = not (np.isnan(static) or np.isnan(adaptive))
         rhos[arm] = {

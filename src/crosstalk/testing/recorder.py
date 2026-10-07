@@ -43,10 +43,11 @@ class RecordingRelay:
         self.mss = mss
         self.connections: list[_Connection] = []
         self.server: asyncio.Server | None = None
+        self.tasks: set[asyncio.Task[None]] = set()
         self.port = 0
 
     async def serve(self, host: str = "127.0.0.1") -> int:
-        self.server = await asyncio.start_server(self._accept, host, 0)
+        self.server = await asyncio.start_server(self._start_accept, host, 0)
         self.port = int(self.server.sockets[0].getsockname()[1])
         return self.port
 
@@ -54,6 +55,13 @@ class RecordingRelay:
         if self.server is not None:
             self.server.close()
             await self.server.wait_closed()
+        if self.tasks:
+            await asyncio.gather(*tuple(self.tasks))
+
+    def _start_accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        task = asyncio.create_task(self._accept(reader, writer))
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
 
     async def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         connection = _Connection(int(writer.get_extra_info("peername")[1]), time.time_ns())
