@@ -60,7 +60,7 @@ class FakeJobStore:
 
 
 def test_schema_has_durable_tables_and_constraints() -> None:
-    assert set(metadata.tables) == {"experiments", "sessions", "jobs", "artifacts", "events"}
+    assert {"experiments", "sessions", "jobs", "artifacts", "events"} <= set(metadata.tables)
     jobs = metadata.tables["jobs"]
     assert jobs.c.max_attempts.default is not None
     assert {index.name for index in jobs.indexes} == {"ix_jobs_claim", "ix_jobs_lease"}

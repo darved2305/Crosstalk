@@ -25,6 +25,7 @@ dependencies = [
 [project.scripts]
 crosstalk = "crosstalk.cli:app"
 crosstalk-mock = "crosstalk.testing.mock_upstream:main"
+crosstalk-api = "crosstalk.api.app:main"
 
 [project.optional-dependencies]
 ml = [
@@ -41,6 +42,7 @@ workloads = [
 dev = [
   "cryptography>=44,<49",
   "httpx>=0.28,<1",
+  "httpx2>=2,<3",
   "hypothesis>=6.130,<7",
   "import-linter>=2.3,<3",
   "matplotlib>=3.10,<4",

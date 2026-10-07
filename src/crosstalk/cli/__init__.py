@@ -22,6 +22,7 @@ workloads_app = typer.Typer()
 e0_app = typer.Typer()
 e1_app = typer.Typer()
 e2_app = typer.Typer()
+api_app = typer.Typer()
 app.add_typer(schema_app, name="schema")
 app.add_typer(shaper_app, name="shaper")
 app.add_typer(capture_app, name="capture")
@@ -33,6 +34,7 @@ app.add_typer(workloads_app, name="workloads")
 app.add_typer(e0_app, name="e0")
 app.add_typer(e1_app, name="e1")
 app.add_typer(e2_app, name="e2")
+app.add_typer(api_app, name="api")
 
 
 def _load_experiment(path: Path) -> ExperimentConfig:
@@ -62,6 +64,29 @@ def schema_export(directory: Path) -> None:
     for model in (PolicyConfig, CaptureConfig, SessionPlan, ExperimentConfig, RunManifest):
         target = directory / f"{model.__name__}.schema.json"
         target.write_text(json.dumps(model.model_json_schema(), indent=2), encoding="utf-8")
+
+
+@api_app.command("openapi")
+def api_openapi(output: Path = Path("docs/openapi.json")) -> None:
+    from crosstalk.api.app import ApiSettings, create_app
+    from crosstalk.common.artifacts import atomic_replace, atomic_write
+
+    placeholder = "openapi-export-placeholder-token"
+    document = create_app(
+        settings=ApiSettings(operator_token=placeholder, oracle_token=placeholder)
+    ).openapi()
+    data = (json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
+    if output.exists():
+        atomic_replace(output, data)
+    else:
+        atomic_write(output, data)
+
+
+@api_app.command("run")
+def api_run() -> None:
+    from crosstalk.api.app import main
+
+    main()
 
 
 @shaper_app.command("run")

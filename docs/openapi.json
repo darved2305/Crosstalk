@@ -1,0 +1,1220 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "alpha": {
+            "default": 0.05,
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Alpha",
+            "type": "number"
+          },
+          "bootstrap": {
+            "default": 2000,
+            "maximum": 100000.0,
+            "minimum": 100.0,
+            "title": "Bootstrap",
+            "type": "integer"
+          },
+          "inner_folds": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Inner Folds",
+            "type": "integer"
+          },
+          "learning_curve": {
+            "default": true,
+            "title": "Learning Curve",
+            "type": "boolean"
+          },
+          "max_per_class": {
+            "default": 300,
+            "minimum": 1.0,
+            "title": "Max Per Class",
+            "type": "integer"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "null_bootstrap": {
+            "default": 500,
+            "maximum": 100000.0,
+            "minimum": 100.0,
+            "title": "Null Bootstrap",
+            "type": "integer"
+          },
+          "null_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Null Models",
+            "type": "array"
+          },
+          "null_permutations": {
+            "default": 20,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Null Permutations",
+            "type": "integer"
+          },
+          "outer_folds": {
+            "default": 5,
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Outer Folds",
+            "type": "integer"
+          },
+          "planned_per_class": {
+            "default": 200,
+            "minimum": 1.0,
+            "title": "Planned Per Class",
+            "type": "integer"
+          },
+          "primary_model": {
+            "default": "lgbm",
+            "title": "Primary Model",
+            "type": "string"
+          },
+          "primary_representation": {
+            "default": "r1",
+            "title": "Primary Representation",
+            "type": "string"
+          },
+          "representations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Representations",
+            "type": "array"
+          },
+          "seed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "seeds": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Seeds",
+            "type": "integer"
+          },
+          "sensitive_base_rates": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Sensitive Base Rates",
+            "type": "array"
+          },
+          "target_half_width": {
+            "default": 0.05,
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Target Half Width",
+            "type": "number"
+          }
+        },
+        "title": "AnalysisConfig",
+        "type": "object"
+      },
+      "CaptureConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "bpf": {
+            "default": "tcp port 8443",
+            "title": "Bpf",
+            "type": "string"
+          },
+          "buffer_mb": {
+            "default": 64,
+            "maximum": 1024.0,
+            "minimum": 1.0,
+            "title": "Buffer Mb",
+            "type": "integer"
+          },
+          "interface": {
+            "title": "Interface",
+            "type": "string"
+          },
+          "ring_mb": {
+            "default": 512,
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "title": "Ring Mb",
+            "type": "integer"
+          },
+          "snaplen": {
+            "default": 0,
+            "title": "Snaplen",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "interface"
+        ],
+        "title": "CaptureConfig",
+        "type": "object"
+      },
+      "ControlResult": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "title": "ControlResult",
+        "type": "object"
+      },
+      "ExperimentConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "capture": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaptureConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "policy_set": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyConfig"
+            },
+            "title": "Policy Set",
+            "type": "array"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionPlan"
+            },
+            "minItems": 1,
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "sessions"
+        ],
+        "title": "ExperimentConfig",
+        "type": "object"
+      },
+      "ExperimentCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "config_hash": {
+            "title": "Config Hash",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "config_hash"
+        ],
+        "title": "ExperimentCreated",
+        "type": "object"
+      },
+      "ExperimentDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "config_hash": {
+            "title": "Config Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionView"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "completed",
+              "partial",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "config_hash",
+          "state",
+          "created_at",
+          "updated_at",
+          "config",
+          "sessions"
+        ],
+        "title": "ExperimentDetail",
+        "type": "object"
+      },
+      "ExperimentPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ExperimentPage",
+        "type": "object"
+      },
+      "ExperimentSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "config_hash": {
+            "title": "Config Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "running",
+              "completed",
+              "partial",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "config_hash",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExperimentSummary",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JobView": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_attempts": {
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "queue": {
+            "title": "Queue",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "queue",
+          "state",
+          "attempts",
+          "max_attempts"
+        ],
+        "title": "JobView",
+        "type": "object"
+      },
+      "PolicyConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "arm": {
+            "default": "a0",
+            "title": "Arm",
+            "type": "string"
+          },
+          "kind": {
+            "default": "passthrough",
+            "title": "Kind",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Parameters",
+            "type": "object"
+          }
+        },
+        "title": "PolicyConfig",
+        "type": "object"
+      },
+      "Regime": {
+        "enum": [
+          "NAT",
+          "MATCH-P",
+          "MATCH-PR"
+        ],
+        "title": "Regime",
+        "type": "string"
+      },
+      "RunCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "session_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Session Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "session_ids"
+        ],
+        "title": "RunCreated",
+        "type": "object"
+      },
+      "SessionPlan": {
+        "additionalProperties": false,
+        "description": "One collected session.\n\nEither ``requests`` (synthetic validation traffic) or ``workload`` plus ``per_class``\n(corpus-driven, block-randomized traffic) defines the slots.",
+        "properties": {
+          "arm": {
+            "default": "a0",
+            "title": "Arm",
+            "type": "string"
+          },
+          "arms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arms"
+          },
+          "classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes"
+          },
+          "concurrency": {
+            "maximum": 256.0,
+            "minimum": 1.0,
+            "title": "Concurrency",
+            "type": "integer"
+          },
+          "concurrency_levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concurrency Levels"
+          },
+          "cycles": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Cycles",
+            "type": "integer"
+          },
+          "determinism_every": {
+            "default": 25,
+            "minimum": 0.0,
+            "title": "Determinism Every",
+            "type": "integer"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "max_completion_tokens": {
+            "default": 512,
+            "maximum": 999.0,
+            "minimum": 100.0,
+            "title": "Max Completion Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "default": "Qwen/Qwen2.5-1.5B-Instruct",
+            "title": "Model",
+            "type": "string"
+          },
+          "per_class": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Class"
+          },
+          "regime": {
+            "$ref": "#/components/schemas/Regime",
+            "default": "NAT"
+          },
+          "requests": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requests"
+          },
+          "seed": {
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "stream_interval": {
+            "default": 1,
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Stream Interval",
+            "type": "integer"
+          },
+          "stream_interval_arms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stream Interval Arms",
+            "type": "array"
+          },
+          "stream_interval_variants": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Stream Interval Variants",
+            "type": "array"
+          },
+          "target_lengths": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Target Lengths",
+            "type": "array"
+          },
+          "temperature": {
+            "default": 0.7,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Temperature",
+            "type": "number"
+          },
+          "validation": {
+            "default": true,
+            "title": "Validation",
+            "type": "boolean"
+          },
+          "warmup": {
+            "default": 30,
+            "minimum": 0.0,
+            "title": "Warmup",
+            "type": "integer"
+          },
+          "workload": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workload"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "concurrency",
+          "seed"
+        ],
+        "title": "SessionPlan",
+        "type": "object"
+      },
+      "SessionView": {
+        "additionalProperties": false,
+        "properties": {
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobView"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "experiment_id",
+          "state",
+          "cancel_requested"
+        ],
+        "title": "SessionView",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Crosstalk Control API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/experiments": {
+      "get": {
+        "operationId": "list_experiments_v1_experiments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Experiments"
+      },
+      "post": {
+        "operationId": "create_experiment_v1_experiments_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Experiment"
+      }
+    },
+    "/v1/experiments/{experiment_id}": {
+      "get": {
+        "operationId": "get_experiment_v1_experiments__experiment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Experiment"
+      }
+    },
+    "/v1/experiments/{experiment_id}/cancel": {
+      "post": {
+        "operationId": "cancel_experiment_v1_experiments__experiment_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Experiment"
+      }
+    },
+    "/v1/experiments/{experiment_id}/runs": {
+      "post": {
+        "operationId": "create_run_v1_experiments__experiment_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Run"
+      }
+    },
+    "/v1/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_job_v1_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Job"
+      }
+    },
+    "/v1/sessions/{session_id}": {
+      "get": {
+        "operationId": "get_session_v1_sessions__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session"
+      }
+    }
+  }
+}

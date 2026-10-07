@@ -119,3 +119,18 @@ events = Table(
     Column("data", json_type, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+idempotency_keys = Table(
+    "idempotency_keys",
+    metadata,
+    Column(
+        "experiment_id",
+        String(26),
+        ForeignKey("experiments.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("key", String(200), primary_key=True),
+    Column("response", json_type, nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
