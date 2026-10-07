@@ -4,7 +4,7 @@
 
 > In telephony, *crosstalk* is a signal coupling into a channel that was meant to be isolated. Here the encrypted content of an LLM response couples into the size-and-timing channel that TLS does not hide.
 
-**Status:** research and architecture complete (v2.0 docs, 2026-09-19). Implemented and tested end to end against the mock upstream: the measurement instrument (shaper, load generator, capture, reconstruction), the five defense arms D0-D4, and the E0, E1 and E2 analyses. The Linux capture laboratory remains unvalidated, so no experiment data has been collected. See [`docs/experiments/e0-calibration.md`](docs/experiments/e0-calibration.md), [`docs/experiments/defense-arms.md`](docs/experiments/defense-arms.md) and [`docs/experiments/serving-load.md`](docs/experiments/serving-load.md).
+**Status:** research and architecture complete (v2.0 docs, 2026-09-19). Implemented and tested end to end against the in-process mock upstream: the measurement instrument (shaper, load generator, capture, reconstruction), the five defense arms D0-D4, and the E0, E1 and E2 analyses. Durable PostgreSQL orchestration, the `/v1` control API, DuckDB result serving, the Next.js research console, GCP Terraform, and CI/security workflows are also implemented. The Linux Docker capture laboratory and production stage-process adapters remain unvalidated/incomplete, so no experiment data has been collected and no scientific result is claimed. See [`docs/DOCKER_BLOCKED_VALIDATION.md`](docs/DOCKER_BLOCKED_VALIDATION.md) for the precise boundary.
 
 ## The question
 
@@ -43,6 +43,27 @@ A key design rule: **a socket write is not a TLS record, and a record is not a p
 Install dependencies with `uv sync --locked`, then run `make check`. Run `uv run crosstalk lab certs` once to create a local TLS certificate and the ignored artifact directories. On Linux with Docker Engine running, `docker compose -f deploy/compose/lab.yml --profile mock up -d --build --wait` starts the bridge laboratory. Then run `uv run crosstalk lab provenance` on the host to record the source commit, dirty state, running image IDs, and tool versions for the load generator. Refresh provenance after rebuilding or changing the source tree. Set `CT_UID` and `CT_GID` to the host account IDs if they differ from 1000 so the non-root shaper and load generator can write to the artifact mount.
 
 The validation plan is [`experiments/validation.yaml`](experiments/validation.yaml). Run `docker compose -f deploy/compose/lab.yml exec loadgen crosstalk session run /app/experiments/validation.yaml --root /artifacts` and note both session IDs. For each ID, run `docker compose -f deploy/compose/lab.yml exec capture crosstalk reconstruct run <session-id> --root /artifacts` followed by `docker compose -f deploy/compose/lab.yml exec capture crosstalk reconstruct validate <session-id> --root /artifacts`. The capture image contains the independent `tshark` oracle. The report command is `uv run crosstalk report waterfall <session-id> <request-id> --root artifacts --output artifacts/waterfall.png`. Measured status and unresolved host requirements are in [`bench/RESULTS.md`](bench/RESULTS.md) and [`docs/experiments/encrypted-traffic-validation.md`](docs/experiments/encrypted-traffic-validation.md).
+
+## Control plane
+
+Copy `deploy/compose/platform.env.example` to the ignored
+`deploy/compose/platform.env`, replace all secrets, then start the durable
+PostgreSQL/API/console stack:
+
+```bash
+docker compose -f deploy/compose/platform.yml --env-file deploy/compose/platform.env up -d --build --wait
+```
+
+The API is bound to `127.0.0.1:8080` and the console to `127.0.0.1:3000`.
+Migrations run as a one-shot dependency before API startup. Read
+[`docs/runbooks/control-plane.md`](docs/runbooks/control-plane.md) before using
+the run endpoint: the queue engine is durable, but production stage adapters
+are intentionally not represented as running Compose services yet.
+
+For a completed session, `uv run crosstalk manifest audit
+artifacts/sessions/<session-id>/manifest.json` fails closed unless code,
+container, model, tokenizer, capture, and validation provenance make it
+eligible for reporting.
 
 ## Ethics
 

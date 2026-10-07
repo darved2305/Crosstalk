@@ -12,6 +12,7 @@ or live PostgreSQL integration result is claimed from that environment.
 - Terraform formatting, provider initialization, and `terraform validate`
 - Bash syntax for both GCE startup scripts
 - YAML parsing for all GitHub Actions workflows
+- Python and production Node dependency audits against current advisory data
 
 ## Deferred until Docker is available
 
