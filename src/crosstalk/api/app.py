@@ -1,6 +1,7 @@
 import hmac
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, Query, Request
@@ -11,15 +12,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from crosstalk.api.results import (
+    DuckDBResultStore,
+    ResultDataError,
+    ResultNotFoundError,
+    ResultStore,
+)
 from crosstalk.api.schemas import (
     ControlResult,
+    EmissionResults,
+    EmissionRow,
+    EvaluationResults,
+    EvaluationRow,
     ExperimentCreated,
     ExperimentDetail,
     ExperimentPage,
     ExperimentSummary,
+    FrontierResults,
+    FrontierRow,
     Problem,
     RunCreated,
     SessionView,
+    TraceResults,
 )
 from crosstalk.api.store import ConflictError, ControlStore, NotFoundError, PostgresControlStore
 from crosstalk.common.ids import is_ulid
@@ -35,6 +49,7 @@ class ApiSettings(BaseSettings):
     operator_token: str = Field(min_length=32)
     oracle_token: str = Field(min_length=32)
     code_commit: str = "unknown"
+    artifacts_root: Path = Path("artifacts")
 
 
 class BodyLimitMiddleware:
@@ -100,11 +115,16 @@ def problem_response(status: int, title: str, detail: str, request: Request) -> 
     )
 
 
-def create_app(store: ControlStore | None = None, settings: ApiSettings | None = None) -> FastAPI:
+def create_app(
+    store: ControlStore | None = None,
+    settings: ApiSettings | None = None,
+    result_store: ResultStore | None = None,
+) -> FastAPI:
     resolved = settings or ApiSettings()  # pyright: ignore[reportCallIssue]
     control = store or PostgresControlStore(
         create_engine(resolved.database_url, pool_pre_ping=True, pool_size=5, max_overflow=5)
     )
+    result_data = result_store or DuckDBResultStore(resolved.artifacts_root)
     app = FastAPI(title="Crosstalk Control API", version="1.0.0")
     app.add_middleware(BodyLimitMiddleware)
 
@@ -127,6 +147,14 @@ def create_app(store: ControlStore | None = None, settings: ApiSettings | None =
             for item in error.errors()
         )
         return problem_response(422, "Invalid request", detail, request)
+
+    @app.exception_handler(ResultNotFoundError)
+    async def result_not_found(request: Request, error: ResultNotFoundError) -> JSONResponse:
+        return problem_response(404, "Result not found", str(error), request)
+
+    @app.exception_handler(ResultDataError)
+    async def invalid_result(request: Request, error: ResultDataError) -> JSONResponse:
+        return problem_response(422, "Invalid result artifact", str(error), request)
 
     def scopes(authorization: Annotated[str | None, Header()] = None) -> frozenset[str]:
         if authorization is None or not authorization.startswith("Bearer "):
@@ -230,6 +258,72 @@ def create_app(store: ControlStore | None = None, settings: ApiSettings | None =
         require_ulid(job_id, "job_id")
         return ControlResult.model_validate(control.retry_job(job_id))
 
+    @app.get("/v1/experiments/{experiment_id}/results", response_model=EvaluationResults)
+    def experiment_results(
+        experiment_id: str, auth: Annotated[frozenset[str], Depends(scopes)]
+    ) -> EvaluationResults:
+        del auth
+        require_ulid(experiment_id, "experiment_id")
+        return EvaluationResults(
+            experiment_id=experiment_id,
+            rows=[
+                EvaluationRow.model_validate(row) for row in result_data.evaluations(experiment_id)
+            ],
+        )
+
+    @app.get("/v1/experiments/{experiment_id}/frontier", response_model=FrontierResults)
+    def experiment_frontier(
+        experiment_id: str,
+        auth: Annotated[frozenset[str], Depends(scopes)],
+        setting: Annotated[str, Query(pattern="^(static|adaptive)$")] = "adaptive",
+        cost: Annotated[str, Query(pattern="^(ttft_p95|itl_p99|bandwidth|cpu)$")] = "bandwidth",
+    ) -> FrontierResults:
+        del auth
+        require_ulid(experiment_id, "experiment_id")
+        return FrontierResults(
+            experiment_id=experiment_id,
+            setting=setting,
+            cost=cost,
+            rows=[
+                FrontierRow.model_validate(row)
+                for row in result_data.frontier(experiment_id, setting)
+            ],
+        )
+
+    @app.get("/v1/sessions/{session_id}/traces/{request_id}", response_model=TraceResults)
+    def trace(
+        session_id: str,
+        request_id: str,
+        auth: Annotated[frozenset[str], Depends(scopes)],
+        layer: Annotated[str, Query(pattern="^(records|packets)$")] = "records",
+    ) -> TraceResults:
+        del auth
+        require_ulid(session_id, "session_id")
+        require_ulid(request_id, "request_id")
+        return TraceResults.model_validate(result_data.trace(session_id, request_id, layer))
+
+    @app.get(
+        "/v1/sessions/{session_id}/traces/{request_id}/emissions",
+        response_model=EmissionResults,
+    )
+    def emissions(
+        session_id: str,
+        request_id: str,
+        auth: Annotated[frozenset[str], Depends(scopes)],
+    ) -> EmissionResults:
+        require_ulid(session_id, "session_id")
+        require_ulid(request_id, "request_id")
+        if "oracle" not in auth:
+            raise ScopeError("The oracle scope is required for emission data")
+        return EmissionResults(
+            session_id=session_id,
+            request_id=request_id,
+            rows=[
+                EmissionRow.model_validate(row)
+                for row in result_data.emissions(session_id, request_id)
+            ],
+        )
+
     return app
 
 
@@ -238,6 +332,10 @@ class AuthError(Exception):
 
 
 class InputError(Exception):
+    pass
+
+
+class ScopeError(AuthError):
     pass
 
 

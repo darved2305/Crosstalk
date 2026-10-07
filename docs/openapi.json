@@ -182,6 +182,242 @@
         "title": "ControlResult",
         "type": "object"
       },
+      "EmissionResults": {
+        "additionalProperties": false,
+        "properties": {
+          "oracle": {
+            "const": true,
+            "default": true,
+            "title": "Oracle",
+            "type": "boolean"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/EmissionRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "warning": {
+            "default": "Validation-only oracle data; never attacker-visible.",
+            "title": "Warning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "request_id",
+          "rows"
+        ],
+        "title": "EmissionResults",
+        "type": "object"
+      },
+      "EmissionRow": {
+        "additionalProperties": false,
+        "properties": {
+          "arm": {
+            "title": "Arm",
+            "type": "string"
+          },
+          "content_bytes": {
+            "title": "Content Bytes",
+            "type": "integer"
+          },
+          "framed_len": {
+            "title": "Framed Len",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "n_events": {
+            "title": "N Events",
+            "type": "integer"
+          },
+          "pad_bytes": {
+            "title": "Pad Bytes",
+            "type": "integer"
+          },
+          "queue_delay_ns": {
+            "title": "Queue Delay Ns",
+            "type": "integer"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "t_emit_ns": {
+            "title": "T Emit Ns",
+            "type": "integer"
+          },
+          "timer_lateness_ns": {
+            "title": "Timer Lateness Ns",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "t_emit_ns",
+          "kind",
+          "framed_len",
+          "content_bytes",
+          "pad_bytes",
+          "n_events",
+          "queue_delay_ns",
+          "timer_lateness_ns",
+          "arm"
+        ],
+        "title": "EmissionRow",
+        "type": "object"
+      },
+      "EvaluationResults": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "rows"
+        ],
+        "title": "EvaluationResults",
+        "type": "object"
+      },
+      "EvaluationRow": {
+        "additionalProperties": false,
+        "properties": {
+          "B": {
+            "title": "B",
+            "type": "integer"
+          },
+          "arm": {
+            "title": "Arm",
+            "type": "string"
+          },
+          "ci_hi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Hi"
+          },
+          "ci_lo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Lo"
+          },
+          "concurrency": {
+            "title": "Concurrency",
+            "type": "integer"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "n_families": {
+            "title": "N Families",
+            "type": "integer"
+          },
+          "regime": {
+            "title": "Regime",
+            "type": "string"
+          },
+          "representation": {
+            "title": "Representation",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "setting": {
+            "title": "Setting",
+            "type": "string"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "session_id",
+          "experiment_id",
+          "regime",
+          "concurrency",
+          "task",
+          "representation",
+          "arm",
+          "setting",
+          "model",
+          "metric",
+          "value",
+          "ci_lo",
+          "ci_hi",
+          "n",
+          "n_families",
+          "B"
+        ],
+        "title": "EvaluationRow",
+        "type": "object"
+      },
       "ExperimentConfig": {
         "additionalProperties": false,
         "properties": {
@@ -392,6 +628,173 @@
           "updated_at"
         ],
         "title": "ExperimentSummary",
+        "type": "object"
+      },
+      "FrontierResults": {
+        "additionalProperties": false,
+        "properties": {
+          "cost": {
+            "title": "Cost",
+            "type": "string"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FrontierRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "setting": {
+            "title": "Setting",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "setting",
+          "cost",
+          "rows"
+        ],
+        "title": "FrontierResults",
+        "type": "object"
+      },
+      "FrontierRow": {
+        "additionalProperties": false,
+        "properties": {
+          "balanced_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balanced Accuracy"
+          },
+          "bandwidth_overhead_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bandwidth Overhead Pct"
+          },
+          "concurrency": {
+            "title": "Concurrency",
+            "type": "integer"
+          },
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "itl_p99_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itl P99 Ms"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "representation": {
+            "title": "Representation",
+            "type": "string"
+          },
+          "rho": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho"
+          },
+          "rho_hi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho Hi"
+          },
+          "rho_lo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho Lo"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "setting": {
+            "title": "Setting",
+            "type": "string"
+          },
+          "ttft_p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttft P95 Ms"
+          }
+        },
+        "required": [
+          "session_id",
+          "experiment_id",
+          "concurrency",
+          "condition",
+          "setting",
+          "model",
+          "representation",
+          "balanced_accuracy",
+          "rho",
+          "rho_lo",
+          "rho_hi",
+          "bandwidth_overhead_pct",
+          "ttft_p95_ms",
+          "itl_p99_ms"
+        ],
+        "title": "FrontierRow",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -754,6 +1157,82 @@
         "title": "SessionView",
         "type": "object"
       },
+      "TracePoint": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "max_value": {
+            "title": "Max Value",
+            "type": "integer"
+          },
+          "min_value": {
+            "title": "Min Value",
+            "type": "integer"
+          },
+          "t_end_ns": {
+            "title": "T End Ns",
+            "type": "integer"
+          },
+          "t_start_ns": {
+            "title": "T Start Ns",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "t_start_ns",
+          "t_end_ns",
+          "min_value",
+          "max_value",
+          "count"
+        ],
+        "title": "TracePoint",
+        "type": "object"
+      },
+      "TraceResults": {
+        "additionalProperties": false,
+        "properties": {
+          "downsampled": {
+            "title": "Downsampled",
+            "type": "boolean"
+          },
+          "layer": {
+            "title": "Layer",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TracePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source_points": {
+            "title": "Source Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_id",
+          "request_id",
+          "layer",
+          "source_points",
+          "downsampled",
+          "points"
+        ],
+        "title": "TraceResults",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1040,6 +1519,138 @@
         "summary": "Cancel Experiment"
       }
     },
+    "/v1/experiments/{experiment_id}/frontier": {
+      "get": {
+        "operationId": "experiment_frontier_v1_experiments__experiment_id__frontier_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "setting",
+            "required": false,
+            "schema": {
+              "default": "adaptive",
+              "pattern": "^(static|adaptive)$",
+              "title": "Setting",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cost",
+            "required": false,
+            "schema": {
+              "default": "bandwidth",
+              "pattern": "^(ttft_p95|itl_p99|bandwidth|cpu)$",
+              "title": "Cost",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontierResults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Experiment Frontier"
+      }
+    },
+    "/v1/experiments/{experiment_id}/results": {
+      "get": {
+        "operationId": "experiment_results_v1_experiments__experiment_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Experiment Results"
+      }
+    },
     "/v1/experiments/{experiment_id}/runs": {
       "post": {
         "operationId": "create_run_v1_experiments__experiment_id__runs_post",
@@ -1214,6 +1825,145 @@
           }
         },
         "summary": "Get Session"
+      }
+    },
+    "/v1/sessions/{session_id}/traces/{request_id}": {
+      "get": {
+        "operationId": "trace_v1_sessions__session_id__traces__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "layer",
+            "required": false,
+            "schema": {
+              "default": "records",
+              "pattern": "^(records|packets)$",
+              "title": "Layer",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceResults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trace"
+      }
+    },
+    "/v1/sessions/{session_id}/traces/{request_id}/emissions": {
+      "get": {
+        "operationId": "emissions_v1_sessions__session_id__traces__request_id__emissions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmissionResults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Emissions"
       }
     }
   }
