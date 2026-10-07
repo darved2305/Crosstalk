@@ -1,0 +1,12 @@
+project_id         = "my-crosstalk-project"
+billing_account_id = "000000-000000-000000"
+model_revision     = "REPLACE_WITH_COMMIT_SHA"
+vllm_image         = "us-docker.pkg.dev/PROJECT/crosstalk/vllm@sha256:REPLACE"
+shaper_image       = "us-central1-docker.pkg.dev/PROJECT/crosstalk/shaper@sha256:REPLACE"
+loadgen_image      = "us-central1-docker.pkg.dev/PROJECT/crosstalk/loadgen@sha256:REPLACE"
+capture_image      = "us-central1-docker.pkg.dev/PROJECT/crosstalk/capture@sha256:REPLACE"
+github_repository  = "owner/crosstalk"
+
+# If L4 quota/capacity is unavailable, use both overrides together.
+# gpu_machine_type     = "n1-standard-8"
+# gpu_accelerator_type = "nvidia-tesla-t4"

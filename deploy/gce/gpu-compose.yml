@@ -1,0 +1,38 @@
+services:
+  netinit:
+    image: ${SHAPER_IMAGE}
+    command: ["crosstalk", "lab", "netinit", "--root", "/artifacts/lab"]
+    network_mode: service:shaper
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    volumes: [/var/lib/crosstalk/artifacts:/artifacts]
+  shaper:
+    image: ${SHAPER_IMAGE}
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    ports: ["8443:8443"]
+    volumes:
+      - /var/lib/crosstalk/shaper-log:/artifacts/shaper-log
+      - /opt/crosstalk/secrets:/run/secrets:ro
+      - /opt/crosstalk/policies.yaml:/run/config/policies.yaml:ro
+    environment:
+      CT_SHAPER_UPSTREAM_URL: http://vllm:8000
+      CT_SHAPER_CERT: /run/secrets/tls.crt
+      CT_SHAPER_KEY: /run/secrets/tls.key
+      CT_SHAPER_POLICY_FILE: /run/config/policies.yaml
+      CT_SHAPER_ORACLE_DIR: /artifacts/shaper-log
+    depends_on:
+      vllm: { condition: service_healthy }
+  vllm:
+    image: ${VLLM_IMAGE}
+    command: ["--model", "${MODEL_ID}", "--revision", "${MODEL_REVISION}", "--stream-interval", "1", "--max-num-seqs", "64", "--seed", "0"]
+    gpus: all
+    shm_size: 8gb
+    healthcheck:
+      test: [CMD, curl, -f, http://127.0.0.1:8000/health]
+      interval: 30s
+      timeout: 5s
+      retries: 40

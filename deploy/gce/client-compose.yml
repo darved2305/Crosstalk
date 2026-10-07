@@ -1,0 +1,24 @@
+services:
+  loadgen:
+    image: ${LOADGEN_IMAGE}
+    command: ["sleep", "infinity"]
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes:
+      - /var/lib/crosstalk/artifacts:/artifacts
+      - /opt/crosstalk/lab.crt:/run/secrets/lab.crt:ro
+    environment:
+      CT_PROVENANCE_FILE: /artifacts/lab/provenance.json
+    extra_hosts: ["shaper:${GPU_INTERNAL_IP}"]
+  capture:
+    image: ${CAPTURE_IMAGE}
+    command: ["crosstalk", "capture", "serve", "--root", "/artifacts", "--interface", "eth0"]
+    network_mode: service:loadgen
+    user: "0:65532"
+    cap_drop: [ALL]
+    cap_add: [NET_RAW, NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    volumes: [/var/lib/crosstalk/artifacts:/artifacts]
