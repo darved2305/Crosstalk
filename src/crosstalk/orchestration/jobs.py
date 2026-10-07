@@ -4,10 +4,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import bindparam, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Engine, RowMapping
 
 from crosstalk.common.errors import ValidationError
-from crosstalk.orchestration.schema import jobs
+from crosstalk.common.ids import new_ulid
+from crosstalk.orchestration.schema import experiments, jobs
 from crosstalk.orchestration.state import JobState, Queue
 
 LEASE_SECONDS = 60
@@ -62,6 +64,46 @@ class JobRepository:
                 .mappings()
                 .first()
             )
+            return row
+
+    def enqueue(
+        self,
+        *,
+        experiment_id: str,
+        session_id: str | None,
+        kind: str,
+        queue: Queue,
+        payload: Mapping[str, object],
+        stage_key: str,
+        run_after: datetime | None = None,
+    ) -> RowMapping:
+        values = {
+            "id": new_ulid(),
+            "experiment_id": experiment_id,
+            "session_id": session_id,
+            "kind": kind,
+            "queue": queue,
+            "payload": dict(payload),
+            "state": JobState.QUEUED,
+            "attempts": 0,
+            "max_attempts": MAX_ATTEMPTS,
+            "run_after": run_after or datetime.now(UTC),
+            "stage_key": stage_key,
+        }
+        statement = (
+            insert(jobs)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=[jobs.c.stage_key])
+            .returning(*jobs.c)
+        )
+        with self.engine.begin() as connection:
+            row = connection.execute(statement).mappings().first()
+            if row is None:
+                row = (
+                    connection.execute(select(jobs).where(jobs.c.stage_key == stage_key))
+                    .mappings()
+                    .one()
+                )
             return row
 
     def heartbeat(self, job_id: str, worker_id: str) -> bool:
@@ -143,6 +185,11 @@ class JobRepository:
 
     def cancel_experiment(self, experiment_id: str) -> int:
         with self.engine.begin() as connection:
+            connection.execute(
+                update(experiments)
+                .where(experiments.c.id == experiment_id)
+                .values(cancel_requested=True, updated_at=func.now())
+            )
             result = connection.execute(
                 update(jobs)
                 .where(
@@ -152,6 +199,35 @@ class JobRepository:
                 .values(state=JobState.CANCELLED, updated_at=func.now())
             )
             return result.rowcount
+
+    def retry(self, job_id: str) -> bool:
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                update(jobs)
+                .where(jobs.c.id == job_id, jobs.c.state.in_([JobState.FAILED, JobState.DEAD]))
+                .values(
+                    state=JobState.QUEUED,
+                    attempts=0,
+                    run_after=func.now(),
+                    lease_until=None,
+                    worker_id=None,
+                    error=None,
+                    updated_at=func.now(),
+                )
+            )
+            return result.rowcount == 1
+
+    def cancellation_requested(self, job_id: str) -> bool:
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(jobs.c.state, experiments.c.cancel_requested)
+                .join(experiments, experiments.c.id == jobs.c.experiment_id)
+                .where(jobs.c.id == job_id)
+            ).one_or_none()
+            return row is None or row[0] == JobState.CANCELLED or bool(row[1])
+
+    def cancel(self, job_id: str, worker_id: str) -> None:
+        self._finish(job_id, worker_id, JobState.CANCELLED, None)
 
     def _finish(
         self,
