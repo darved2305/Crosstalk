@@ -23,6 +23,7 @@ e0_app = typer.Typer()
 e1_app = typer.Typer()
 e2_app = typer.Typer()
 api_app = typer.Typer()
+manifest_app = typer.Typer()
 app.add_typer(schema_app, name="schema")
 app.add_typer(shaper_app, name="shaper")
 app.add_typer(capture_app, name="capture")
@@ -35,6 +36,7 @@ app.add_typer(e0_app, name="e0")
 app.add_typer(e1_app, name="e1")
 app.add_typer(e2_app, name="e2")
 app.add_typer(api_app, name="api")
+app.add_typer(manifest_app, name="manifest")
 
 
 def _load_experiment(path: Path) -> ExperimentConfig:
@@ -87,6 +89,25 @@ def api_run() -> None:
     from crosstalk.api.app import main
 
     main()
+
+
+@manifest_app.command("audit")
+def manifest_audit(path: Path) -> None:
+    """Check whether a recorded session is eligible to support reported results."""
+    manifest = RunManifest.model_validate_json(path.read_text(encoding="utf-8"))
+    issues = manifest.reportability_issues()
+    typer.echo(
+        json.dumps(
+            {
+                "session_id": manifest.session_id,
+                "reportable": not issues,
+                "issues": issues,
+            },
+            indent=2,
+        )
+    )
+    if issues:
+        raise typer.Exit(code=1)
 
 
 @shaper_app.command("run")

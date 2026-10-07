@@ -64,6 +64,44 @@ def test_manifest_roundtrip() -> None:
     )
     assert RunManifest.model_validate_json(manifest.model_dump_json()) == manifest
     assert json.loads(manifest.model_dump_json())["status"] == "PARTIAL"
+    assert "source tree was dirty" not in manifest.reportability_issues()
+    assert "session status is PARTIAL" in manifest.reportability_issues()
+
+
+def test_manifest_reportability_requires_provenance_and_clean_validation() -> None:
+    manifest = RunManifest(
+        session_id=new_ulid(),
+        experiment_id="v",
+        config_sha256="a" * 64,
+        plan_sha256="b" * 64,
+        git_commit="c" * 40,
+        git_dirty=False,
+        image_digests={
+            "shaper": "sha256:s",
+            "loadgen": "sha256:l",
+            "capture": "sha256:c",
+            "vllm": "sha256:v",
+        },
+        model_id="m",
+        model_revision="model-commit",
+        tokenizer_revision="tokenizer-commit",
+        workload_version="v1",
+        workload_sha256="d" * 64,
+        policy_set_sha256="e" * 64,
+        seeds={"plan": 1},
+        stream_interval=1,
+        concurrency=1,
+        environment={},
+        timing={},
+        planned=1,
+        completed=1,
+        capture_drops=0,
+        validation={"tshark": True, "emissions": True},
+        status=SessionStatus.VALID,
+    )
+    assert manifest.reportability_issues() == []
+    failed = manifest.model_copy(update={"validation": {"tshark": False}})
+    assert failed.reportability_issues() == ["validation failed: tshark"]
 
 
 def test_schemas_and_access_boundaries(tmp_path: Path) -> None:

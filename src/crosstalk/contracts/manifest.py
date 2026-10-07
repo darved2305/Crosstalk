@@ -12,6 +12,7 @@ class SessionStatus(StrEnum):
 
 
 class RunManifest(StrictModel):
+    schema_version: int = 1
     session_id: str
     experiment_id: str
     config_sha256: str
@@ -41,3 +42,26 @@ class RunManifest(StrictModel):
     validation: dict[str, bool] = Field(default_factory=dict)
     status: SessionStatus = SessionStatus.PARTIAL
     reasons: list[str] = Field(default_factory=list)
+
+    def reportability_issues(self) -> list[str]:
+        """Return objective reasons this session cannot support reported results."""
+        issues: list[str] = []
+        if self.git_dirty:
+            issues.append("source tree was dirty")
+        if self.status != SessionStatus.VALID:
+            issues.append(f"session status is {self.status}")
+        for service in ("shaper", "loadgen", "capture"):
+            if not self.image_digests.get(service):
+                issues.append(f"missing {service} image digest")
+        if not ({"vllm", "mock-upstream"} & self.image_digests.keys()):
+            issues.append("missing upstream image digest")
+        if not self.model_revision:
+            issues.append("missing model revision")
+        if self.workload_version != "synthetic-validation-v1" and not self.tokenizer_revision:
+            issues.append("missing tokenizer revision")
+        if self.capture_drops not in (0, None):
+            issues.append(f"capture reported {self.capture_drops} kernel drops")
+        issues.extend(
+            f"validation failed: {name}" for name, passed in self.validation.items() if not passed
+        )
+        return issues
