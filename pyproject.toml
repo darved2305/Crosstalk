@@ -13,7 +13,7 @@ dependencies = [
   "typer>=0.16,<1",
   "uvloop>=0.22,<0.23; sys_platform != 'win32'",
   "pyyaml>=6,<7",
-  "cryptography>=44,<49",
+  "cryptography>=50,<51",
   "fastapi>=0.118,<1",
   "uvicorn>=0.37,<1",
   "sqlalchemy>=2.0,<3",
@@ -40,7 +40,7 @@ workloads = [
 
 [dependency-groups]
 dev = [
-  "cryptography>=44,<49",
+  "cryptography>=50,<51",
   "httpx>=0.28,<1",
   "httpx2>=2,<3",
   "hypothesis>=6.130,<7",
