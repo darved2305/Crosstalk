@@ -170,6 +170,17 @@ def test_request_size_limit_and_missing_idempotency_key() -> None:
     assert missing_key.status_code == 422
 
 
+def test_negative_content_length_is_problem_json() -> None:
+    with client() as api:
+        response = api.post(
+            "/v1/experiments",
+            headers={**auth(), "Content-Length": "-1"},
+            content=b"{}",
+        )
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "application/problem+json"
+
+
 def test_openapi_has_stable_control_contracts() -> None:
     document = create_app(
         FakeControlStore(), ApiSettings(operator_token=TOKEN, oracle_token=ORACLE_TOKEN)

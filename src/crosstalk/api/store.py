@@ -82,15 +82,6 @@ class PostgresControlStore:
     ) -> tuple[Mapping[str, object], bool]:
         now = datetime.now(UTC)
         with self.engine.begin() as connection:
-            existing = connection.execute(
-                select(idempotency_keys.c.response).where(
-                    idempotency_keys.c.experiment_id == experiment_id,
-                    idempotency_keys.c.key == idempotency_key,
-                    idempotency_keys.c.expires_at > now,
-                )
-            ).scalar_one_or_none()
-            if existing is not None:
-                return cast(Mapping[str, object], existing), True
             experiment = (
                 connection.execute(
                     select(experiments).where(experiments.c.id == experiment_id).with_for_update()
@@ -100,6 +91,18 @@ class PostgresControlStore:
             )
             if experiment is None:
                 raise NotFoundError("Experiment does not exist")
+            # The experiment row lock serializes identical concurrent requests. The
+            # idempotency lookup must happen after acquiring it or two transactions
+            # can both observe a miss and create duplicate sessions.
+            existing = connection.execute(
+                select(idempotency_keys.c.response).where(
+                    idempotency_keys.c.experiment_id == experiment_id,
+                    idempotency_keys.c.key == idempotency_key,
+                    idempotency_keys.c.expires_at > now,
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return cast(Mapping[str, object], existing), True
             if experiment["cancel_requested"]:
                 raise ConflictError("Experiment is cancelled")
             config = ExperimentConfig.model_validate(experiment["config"])
@@ -261,8 +264,13 @@ class PostgresControlStore:
                 select(jobs.c.state).where(jobs.c.experiment_id == row["id"])
             ).scalars()
         )
-        state = derive_experiment_state(
-            [SessionState(item) for item in session_states], [JobState(item) for item in job_states]
+        state = (
+            "cancelled"
+            if row["cancel_requested"]
+            else derive_experiment_state(
+                [SessionState(item) for item in session_states],
+                [JobState(item) for item in job_states],
+            )
         )
         return {**self._dict(row), "state": state}
 

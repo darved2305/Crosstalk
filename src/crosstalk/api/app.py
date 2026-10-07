@@ -63,9 +63,18 @@ class BodyLimitMiddleware:
             return
         headers = dict(scope["headers"])
         length = headers.get(b"content-length")
-        if length is not None and int(length) > self.maximum:
-            await self._reject(scope, receive, send)
-            return
+        if length is not None:
+            try:
+                declared_length = int(length)
+            except ValueError:
+                await self._reject_invalid_length(scope, receive, send)
+                return
+            if declared_length < 0:
+                await self._reject_invalid_length(scope, receive, send)
+                return
+            if declared_length > self.maximum:
+                await self._reject(scope, receive, send)
+                return
         consumed = 0
 
         async def limited_receive() -> Message:
@@ -88,6 +97,19 @@ class BodyLimitMiddleware:
         request = Request(scope)
         response = problem_response(
             413, "Request too large", "Request body exceeds 256 KiB", request
+        )
+
+        async def empty_receive() -> Message:
+            return {"type": "http.disconnect"}
+
+        await response(scope, empty_receive, send)
+
+    @staticmethod
+    async def _reject_invalid_length(scope: Scope, receive: Receive, send: Send) -> None:
+        del receive
+        request = Request(scope)
+        response = problem_response(
+            400, "Bad request", "Content-Length must be a nonnegative integer", request
         )
 
         async def empty_receive() -> Message:
@@ -169,6 +191,10 @@ def create_app(
     @app.exception_handler(AuthError)
     async def unauthorized(request: Request, error: AuthError) -> JSONResponse:
         return problem_response(401, "Unauthorized", str(error), request)
+
+    @app.exception_handler(ScopeError)
+    async def forbidden(request: Request, error: ScopeError) -> JSONResponse:
+        return problem_response(403, "Forbidden", str(error), request)
 
     @app.get("/healthz", include_in_schema=False)
     def health() -> Mapping[str, str]:

@@ -164,7 +164,7 @@ def test_oracle_emissions_require_backend_scope(tmp_path: Path) -> None:
     with api_client(tmp_path) as api:
         denied = api.get(path, headers=auth())
         allowed = api.get(path, headers=auth(ORACLE_TOKEN))
-    assert denied.status_code == 401
+    assert denied.status_code == 403
     assert denied.headers["content-type"] == "application/problem+json"
     assert allowed.status_code == 200
     assert allowed.json()["oracle"] is True
