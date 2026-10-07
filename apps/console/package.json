@@ -1,0 +1,35 @@
+{
+  "name": "@crosstalk/console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "generate:api": "openapi-typescript ../../docs/openapi.json -o src/generated/api.ts",
+    "check": "pnpm generate:api && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "uplot": "1.6.32",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@testing-library/react": "16.3.3",
+    "@types/node": "24.10.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "eslint": "9.39.1",
+    "eslint-config-next": "16.4.0",
+    "jsdom": "30.1.2",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}
