@@ -1,0 +1,12 @@
+@media (max-width: 760px) {
+  .metricBox {
+    height: auto;
+    min-height: 125px;
+  }
+  .cardGrid {
+    gap: 14px;
+  }
+  .cardTitle {
+    min-height: 94px;
+  }
+}

@@ -1,0 +1,18 @@
+server {
+    listen 3000;
+    server_name _;
+    root /usr/share/nginx/html;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    add_header Cache-Control "no-store" always;
+
+    location /v1/ {
+        proxy_pass ${CT_CONSOLE_API_URL};
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

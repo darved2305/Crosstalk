@@ -1,7 +1,7 @@
 import type { TraceResults } from "@/lib/schemas";
 
 export function TracePlot({ trace }: { trace: TraceResults }) {
-  if (!trace.points.length) return <div className="empty">No observer points for this request.</div>;
+  if (!trace.points.length) return <div className="emptyState">No observer points for this request.</div>;
   const width = 900;
   const height = 280;
   const times = trace.points.flatMap((point) => [point.t_start_ns, point.t_end_ns]);

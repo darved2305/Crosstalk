@@ -34,6 +34,10 @@ export const experimentPage = z.object({
   next_cursor: ulid.nullable().optional(),
 });
 
+export const experimentCreated = z.object({ id: ulid, name: z.string(), config_hash: z.string() });
+export const runCreated = z.object({ experiment_id: ulid, session_ids: z.array(ulid), replayed: z.boolean() });
+export const controlResult = z.object({ id: ulid, state: z.string() });
+
 export const experimentDetail = experimentSummary.extend({
   config: z.record(z.string(), z.unknown()),
   sessions: z.array(session),
@@ -126,6 +130,9 @@ export const emissionResults = z.object({
 });
 
 export type ExperimentPage = z.infer<typeof experimentPage>;
+export type ExperimentSummary = z.infer<typeof experimentSummary>;
+export type ExperimentDetail = z.infer<typeof experimentDetail>;
+export type Session = z.infer<typeof session>;
 export type TraceResults = z.infer<typeof traceResults>;
 export type EvaluationResults = z.infer<typeof evaluationResults>;
 export type FrontierResults = z.infer<typeof frontierResults>;

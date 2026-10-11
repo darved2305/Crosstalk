@@ -1,0 +1,21 @@
+.reportPanel {
+  background: #fff;
+  border: 1px solid #e0e4df;
+  border-radius: 14px;
+  padding: 20px;
+}
+.reportPanel pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font:
+    13px/1.65 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  color: #2d352f;
+  max-height: 70vh;
+  overflow: auto;
+}
+.reportPanel button {
+  margin-top: 12px;
+}

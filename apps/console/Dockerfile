@@ -6,11 +6,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-FROM node:24.10.0-bookworm-slim
-WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-USER node
+FROM nginxinc/nginx-unprivileged:1.29-alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 EXPOSE 3000
-CMD ["node", "server.js"]

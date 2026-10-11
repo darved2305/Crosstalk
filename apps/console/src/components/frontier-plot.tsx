@@ -9,7 +9,7 @@ const costField = {
 export function FrontierPlot({ data }: { data: FrontierResults }) {
   const field = costField[data.cost as keyof typeof costField];
   const rows = field ? data.rows.filter((row) => row.rho !== null && row[field] !== null) : [];
-  if (!rows.length) return <div className="empty">No reportable frontier points for this selection.</div>;
+  if (!rows.length) return <div className="emptyState">{data.cost === "cpu" ? "The current frontier contract does not expose CPU cost values." : "No reportable frontier points for this selection."}</div>;
   const width = 800;
   const height = 380;
   const maxX = Math.max(1, ...rows.map((row) => row[field] ?? 0));
