@@ -43,6 +43,7 @@ curl -X POST -H "Authorization: Bearer $CT_API_OPERATOR_TOKEN" \
 
 Cancellation is cooperative for running work and immediate for queued work.
 Retry is accepted only for failed/dead jobs and resets the attempt counter.
-Never copy the oracle token into browser code or client-side storage; the
-console keeps it in its server process and uses it only for explicit oracle
-views.
+The console never bundles an oracle token. An operator may enter it explicitly
+for the validation-only emissions view; the browser keeps it in session storage
+until that tab is closed or the console is disconnected. The API still enforces
+oracle scope on each request.

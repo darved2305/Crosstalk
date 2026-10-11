@@ -51,7 +51,7 @@ This plan is written so that coding agents can build Crosstalk end to end **with
 | Stats | NumPy/SciPy + own cluster-bootstrap module | — |
 | API | **FastAPI** + uvicorn | Day 7 |
 | Transactional state | **PostgreSQL 16** (psycopg 3, SQLAlchemy 2 Core, Alembic) | Day 7; also serves as the job queue |
-| Frontend | **Next.js + TypeScript (strict)**, pnpm, ESLint, zod, openapi-typescript, uPlot + SVG | Day 9; current stable Next major pinned |
+| Frontend | **React + TypeScript (strict) + Vite**, pnpm, ESLint, zod, openapi-typescript, SVG | Console migration; user-directed stack |
 | Containers | Docker (BuildKit), Compose v2 | Base images pinned by digest |
 | IaC | **Terraform** (GCP provider), remote state in GCS | Day 8 |
 | CI/CD | **GitHub Actions**; GCP via Workload Identity Federation; GHCR/Artifact Registry | Day 1 (CI), Day 8 (cloud) |
@@ -72,7 +72,7 @@ This plan is written so that coding agents can build Crosstalk end to end **with
 | **Control API** | FastAPI; Node/Express | **FastAPI** | Pydantic contracts shared with the pipeline; OpenAPI → TS client | Low | Contract tests, p95 < 200 ms for read endpoints |
 | **ML pipeline** | Python (sklearn/LightGBM/XGBoost) | **Python: scikit-learn + LightGBM** | Standard; LightGBM matches Whisper Leak's strongest tabular baseline | Under-tuned adaptive attacker | Nested-CV budget parity; synthetic injected-signal test |
 | **Orchestration workers** | Postgres `SKIP LOCKED` queue; Celery+Redis; Pub/Sub; Temporal | **Python workers on a Postgres job table** | One durable store for state and queue; exactly the concurrency we need | Lease/heartbeat bugs | Kill-and-resume tests (§26) |
-| **Frontend** | Next.js/TS; plain React | **Next.js + TypeScript** | User strength; four screens only | Scope creep | Playwright smoke on 4 screens |
+| **Frontend** | React/TS/Vite | **React + TypeScript + Vite** | User-directed console migration | Scope creep | Playwright smoke on console routes |
 | **Storage / query** | Parquet+DuckDB; Postgres; BigQuery | **Parquet + DuckDB** (+ Postgres for state only) | Experimental data is append-only columnar; DuckDB queries it in place, locally and from GCS | Very large sessions | DuckDB query on a 10M-record session < 5 s |
 | **Deployment** | Docker Compose; GCE; GKE Standard; GKE Autopilot | **Docker Compose (lab), GCE + Terraform (cloud)**; GKE Standard P2 | Fewest hidden network layers; NIC offload control; reproducible (§20) | Less orchestration automation | Terraform apply/destroy from empty; campaign reproducible |
 
@@ -180,7 +180,7 @@ crosstalk/                              # repository root
 │   ├── orchestration/                  # jobs.py (Postgres queue), stages.py, state.py, artifacts.py, worker.py
 │   ├── api/                            # FastAPI app: routers, schemas, errors (RFC 9457), deps
 │   └── testing/                        # mock_upstream.py (OpenAI-compatible SSE replay), fixtures, fake clock
-├── apps/console/                       # Next.js + TypeScript (Day 9)
+├── apps/console/                       # React + TypeScript + Vite console
 ├── services/                           # one directory per deployable image: Dockerfile + entrypoint config only
 │   ├── shaper/  loadgen/  capture/  netinit/  worker/  api/  console/
 ├── deploy/
@@ -697,7 +697,7 @@ artifacts/
 | `crosstalk-netinit` | `debian:bookworm-slim` + `ethtool` + `iproute2` | Runs once and exits |
 | `crosstalk-worker` | Python runtime + ML extra | One image, deployed as two services: `worker-attack` (queue `attack`; observer-only mounts) and `worker-evaluate` (queue `evaluate`; oracle read-only, no restricted) per §14.3 |
 | `crosstalk-api` | Python runtime + API extra | — |
-| `crosstalk-console` | `node:24-bookworm-slim` build → minimal Node runtime | Next.js standalone output |
+| `crosstalk-console` | `node:24-bookworm-slim` build → unprivileged nginx runtime | Vite static output and `/v1` proxy |
 | `vllm` | `vllm/vllm-openai:v0.29.0@sha256:…` | External |
 
 All images are multi-stage, carry OCI labels (`revision`, `source`, `created`), include no build tools or secrets in final layers, and have `HEALTHCHECK` where meaningful.
@@ -1044,7 +1044,7 @@ Day 10 re-analyses all VALID `data-v1` sessions with frozen analysis code. It do
 
 - **Objective:** a demo-grade system, reliable under failure, with the four research screens.
 - **Exact tasks:**
-  1. **Console (Next.js + TS strict)** with four screens:
+  1. **Console (React + TS strict + Vite)** with experiment, trace, result, frontier, and report screens:
      - Runs/experiments overview.
      - **Trace Explorer:** three-layer waterfall, the oracle layer toggle clearly labelled, canvas/uPlot.
      - **Attack Results:** metrics with CIs, confusion matrix, null-control badge, static/adaptive rows.

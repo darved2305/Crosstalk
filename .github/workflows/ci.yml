@@ -56,6 +56,8 @@ jobs:
           cache-dependency-path: apps/console/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
 
   deployment-static:
     runs-on: ubuntu-24.04

@@ -48,13 +48,15 @@ htmlcov/
 coverage.xml
 .ipynb_checkpoints/
 
-# ---- Node / Next.js ----
+# ---- Node / Vite ----
 node_modules/
 .next/
 out/
 .turbo/
 *.tsbuildinfo
 .pnpm-store/
+apps/console/test-results/
+apps/console/playwright-report/
 
 # ---- Experiment data and artifacts (large, regenerable, or sensitive) ----
 data/

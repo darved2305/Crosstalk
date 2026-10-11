@@ -330,11 +330,11 @@ workload manifest ─► session planner ─► loadgen (client netns) ══TLS
                                             ▲
                      labels (no plaintext) ─┘          plaintext prompts/responses: restricted store, never read by attacks
 
-control: FastAPI + PostgreSQL job queue (Day 7) · console: Next.js (Day 9) · cloud: GCE GPU VM + client VM via Terraform (Day 8)
+control: FastAPI + PostgreSQL job queue (Day 7) · console: React + TypeScript + Vite · cloud: GCE GPU VM + client VM via Terraform (Day 8)
 ```
 
 - **Why this shape.** Every box exists for a named reason: the shaper is the treatment, capture is the observer, reconstruction produces the observer's view, and attacks and statistics produce the measurement. Durable orchestration, the API, the UI and the cloud deployment come after the science works locally.
-- **Language and runtime.** Python 3.13 + uvloop for the shaper, loadgen, parser, ML and API; TypeScript/Next.js for the UI; mature system tools (dumpcap, tshark, vLLM) as external components. No Rust, C, C++ or Spring Boot is written for Crosstalk. The shaper runtime is confirmed or overturned by the Day-1 gate (IMPLEMENTATION_PLAN §3). The Day-0 probe on a laptop (RESEARCH §11.3) found:
+- **Language and runtime.** Python 3.13 + uvloop for the shaper, loadgen, parser, ML and API; React + TypeScript + Vite for the UI; mature system tools (dumpcap, tshark, vLLM) as external components. No Rust, C, C++ or Spring Boot is written for Crosstalk. The shaper runtime is confirmed or overturned by the Day-1 gate (IMPLEMENTATION_PLAN §3). The Day-0 probe on a laptop (RESEARCH §11.3) found:
   - 1 `write()` = 1 TLS record in Python, including back-to-back writes; Node merges same-tick writes.
   - uvloop timer lateness p99 ≈ 1.6 ms at 64 streams.
   - A passthrough relay adds ≈ 0.9 ms p99 at 64 streams in Python and Node alike. At 256 streams it adds ≈ 4.3 ms in Python vs ≈ 8.4 ms in Node.
@@ -380,7 +380,7 @@ control: FastAPI + PostgreSQL job queue (Day 7) · console: Next.js (Day 9) · c
 > Built **Crosstalk**, a wire-validated system for measuring privacy leakage in encrypted LLM streaming. Streaming defenses deployed in a Python TLS proxy in front of vLLM are attacked by static and defense-retrained classifiers, and costs (TTFT, inter-token latency, bandwidth, CPU) are measured under varying serving load.
 
 **Detailed entry:**
-> **Crosstalk — encrypted LLM traffic-analysis and defense evaluation** · Python (asyncio/uvloop), TLS 1.3, dumpcap/tshark, vLLM, LightGBM, DuckDB/Parquet, FastAPI, PostgreSQL, Next.js/TypeScript, Terraform, GCP
+> **Crosstalk — encrypted LLM traffic-analysis and defense evaluation** · Python (asyncio/uvloop), TLS 1.3, dumpcap/tshark, vLLM, LightGBM, DuckDB/Parquet, FastAPI, PostgreSQL, React/TypeScript/Vite, Terraform, GCP
 > - Built a Python TLS-terminating SSE shaper with five defense policies (bucket padding, window batching, constant-rate, hybrid). Verified one-emission-one-record behaviour and client compatibility with the official OpenAI SDKs.
 > - Built a PCAPNG → TCP-reassembly → TLS-record pipeline validated record-for-record against tshark, with Linux offload control (TSO/GSO/GRO) and capture-completeness gates.
 > - Evaluated static vs defense-retrained attackers under prompt-family-disjoint nested CV with paired cluster-bootstrap CIs, naturalistic vs length-matched workloads, and concurrency sweeps on vLLM.

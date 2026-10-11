@@ -15,7 +15,7 @@ scientific results.
 | Focused post-upgrade crypto tests | passed; 18 tests |
 | `pip-audit` | no known vulnerabilities after `cryptography` 50.0.2 upgrade |
 | `pnpm audit --prod` | no known vulnerabilities (official npm registry) |
-| Console `pnpm check` | lint, typecheck, 4 tests, and Next.js production build passed |
+| Console `pnpm check` | lint, typecheck, 4 tests, and Vite production build passed after migration (2026-10-11) |
 | Alembic offline upgrade | migrations 0001 and 0002 generated successfully |
 | Terraform | provider init, recursive format check, and validate passed |
 | GCE startup scripts | Bash syntax check passed |

@@ -4,7 +4,7 @@
 
 > In telephony, *crosstalk* is a signal coupling into a channel that was meant to be isolated. Here the encrypted content of an LLM response couples into the size-and-timing channel that TLS does not hide.
 
-**Status:** research and architecture complete (v2.0 docs, 2026-09-19). Implemented and tested end to end against the in-process mock upstream: the measurement instrument (shaper, load generator, capture, reconstruction), the five defense arms D0-D4, and the E0, E1 and E2 analyses. Durable PostgreSQL orchestration, the `/v1` control API, DuckDB result serving, the Next.js research console, GCP Terraform, and CI/security workflows are also implemented. The Linux Docker capture laboratory and production stage-process adapters remain unvalidated/incomplete, so no experiment data has been collected and no scientific result is claimed. See [`docs/DOCKER_BLOCKED_VALIDATION.md`](docs/DOCKER_BLOCKED_VALIDATION.md) for the precise boundary.
+**Status:** research and architecture complete (v2.0 docs, 2026-09-19). Implemented and tested end to end against the in-process mock upstream: the measurement instrument (shaper, load generator, capture, reconstruction), the five defense arms D0-D4, and the E0, E1 and E2 analyses. Durable PostgreSQL orchestration, the `/v1` control API, DuckDB result serving, a React/TypeScript/Vite research console, GCP Terraform, and CI/security workflows are implemented. The Linux Docker capture laboratory and production stage-process adapters remain unvalidated/incomplete, so no experiment data has been collected and no scientific result is claimed. See [`docs/DOCKER_BLOCKED_VALIDATION.md`](docs/DOCKER_BLOCKED_VALIDATION.md) for the precise boundary.
 
 ## The question
 
@@ -26,7 +26,7 @@ What we did not find is an evaluation that deploys several defense families in f
 | **Observer** | dumpcap capture → own pcapng/TCP-reassembly/TLS-record parser, validated record-for-record against tshark, with Linux offloads (TSO/GSO/GRO) controlled and recorded |
 | **Evaluation** | Logistic regression + LightGBM attackers under prompt-family-disjoint nested CV, naturalistic vs length-matched workloads, static vs adaptive attackers on identical held-out families, paired cluster-bootstrap CIs, null-label controls |
 | **Serving load** | Concurrency and vLLM stream interval as experimental factors, with vLLM queue metrics joined to traces |
-| **Platform** | FastAPI + PostgreSQL job queue, Next.js console (four research screens), Terraform on GCP Compute Engine (L4 GPU), GitHub Actions with security scanning |
+| **Platform** | FastAPI + PostgreSQL job queue, React/TypeScript/Vite console, Terraform on GCP Compute Engine (L4 GPU), GitHub Actions with security scanning |
 
 A key design rule: **a socket write is not a TLS record, and a record is not a packet.** Crosstalk stores three observation layers (application emission, TLS record, network packet) and measures the mapping between them rather than assuming it. See `docs/RESEARCH.md` §11.3 for the first measurements.
 
@@ -45,6 +45,16 @@ Install dependencies with `uv sync --locked`, then run `make check`. Run `uv run
 The validation plan is [`experiments/validation.yaml`](experiments/validation.yaml). Run `docker compose -f deploy/compose/lab.yml exec loadgen crosstalk session run /app/experiments/validation.yaml --root /artifacts` and note both session IDs. For each ID, run `docker compose -f deploy/compose/lab.yml exec capture crosstalk reconstruct run <session-id> --root /artifacts` followed by `docker compose -f deploy/compose/lab.yml exec capture crosstalk reconstruct validate <session-id> --root /artifacts`. The capture image contains the independent `tshark` oracle. The report command is `uv run crosstalk report waterfall <session-id> <request-id> --root artifacts --output artifacts/waterfall.png`. Measured status and unresolved host requirements are in [`bench/RESULTS.md`](bench/RESULTS.md) and [`docs/experiments/encrypted-traffic-validation.md`](docs/experiments/encrypted-traffic-validation.md).
 
 ## Control plane
+
+For a native frontend development session, run `pnpm install --frozen-lockfile` and
+`pnpm dev` from `apps/console`; Vite serves on `http://127.0.0.1:3000` and
+proxies `/v1` to `CT_CONSOLE_API_URL` (default `http://127.0.0.1:8080`).
+Run the FastAPI service separately with its existing `CT_API_*` settings.
+Enter an operator token in the console. It is held in browser session storage,
+not bundled into JavaScript or supplied as a console container variable.
+An oracle token is entered separately only when opening the validation-only
+emissions view. `pnpm check` runs contract generation, ESLint, strict TypeScript,
+Vitest, and the Vite build; `pnpm test:e2e` runs browser interaction checks.
 
 Copy `deploy/compose/platform.env.example` to the ignored
 `deploy/compose/platform.env`, replace all secrets, then start the durable

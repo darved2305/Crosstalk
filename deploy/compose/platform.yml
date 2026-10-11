@@ -53,14 +53,11 @@ services:
   console:
     build: ../../apps/console
     restart: unless-stopped
-    read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
     environment:
       CT_CONSOLE_API_URL: http://api:8080
-      CT_CONSOLE_OPERATOR_TOKEN: ${CT_API_OPERATOR_TOKEN:?set CT_API_OPERATOR_TOKEN}
-      CT_CONSOLE_ORACLE_TOKEN: ${CT_API_ORACLE_TOKEN:?set CT_API_ORACLE_TOKEN}
     ports: ["127.0.0.1:3000:3000"]
     networks: [control]
     depends_on:
