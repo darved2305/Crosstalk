@@ -15,26 +15,37 @@ class ResultDataError(Exception):
 
 
 class ResultStore(Protocol):
-    def evaluations(self, experiment_id: str) -> list[Mapping[str, object]]: ...
-    def frontier(self, experiment_id: str, setting: str) -> list[Mapping[str, object]]: ...
+    def evaluations(
+        self, experiment_id: str, experiment_name: str | None = None
+    ) -> list[Mapping[str, object]]: ...
+    def frontier(
+        self, experiment_id: str, setting: str, experiment_name: str | None = None
+    ) -> list[Mapping[str, object]]: ...
     def trace(
         self, session_id: str, request_id: str, layer: str, limit: int = 20_000
     ) -> Mapping[str, object]: ...
     def emissions(self, session_id: str, request_id: str) -> list[Mapping[str, object]]: ...
+    def report(self, experiment_name: str) -> str: ...
 
 
 class DuckDBResultStore:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
 
-    def evaluations(self, experiment_id: str) -> list[Mapping[str, object]]:
-        path = self._file("experiments", experiment_id, "evaluations", "evaluations.parquet")
+    def evaluations(
+        self, experiment_id: str, experiment_name: str | None = None
+    ) -> list[Mapping[str, object]]:
+        path = self._experiment_file(
+            experiment_id, experiment_name, "evaluations", "evaluations.parquet"
+        )
         return self._rows(
             f"SELECT * FROM read_parquet({self._literal(path)}) ORDER BY regime, arm, setting, model, metric"
         )
 
-    def frontier(self, experiment_id: str, setting: str) -> list[Mapping[str, object]]:
-        path = self._file("experiments", experiment_id, "frontier", "frontier.parquet")
+    def frontier(
+        self, experiment_id: str, setting: str, experiment_name: str | None = None
+    ) -> list[Mapping[str, object]]:
+        path = self._experiment_file(experiment_id, experiment_name, "frontier", "frontier.parquet")
         return self._rows(
             f"SELECT * FROM read_parquet({self._literal(path)}) WHERE setting = ? ORDER BY concurrency, condition",
             [setting],
@@ -109,6 +120,13 @@ class DuckDBResultStore:
             [request_id],
         )
 
+    def report(self, experiment_name: str) -> str:
+        path = self._file("experiments", experiment_name, "report.md")
+        try:
+            return path.read_text(encoding="utf-8")
+        except UnicodeError as error:
+            raise ResultDataError("Report artifact is not valid UTF-8") from error
+
     def _directory(self, *parts: str) -> Path:
         path = self.root.joinpath(*parts).resolve()
         if not path.is_relative_to(self.root):
@@ -117,6 +135,16 @@ class DuckDBResultStore:
 
     def _file(self, *parts: str) -> Path:
         return self._existing(self._directory(*parts))
+
+    def _experiment_file(
+        self, experiment_id: str, experiment_name: str | None, *parts: str
+    ) -> Path:
+        try:
+            return self._file("experiments", experiment_id, *parts)
+        except ResultNotFoundError:
+            if experiment_name is None:
+                raise
+            return self._file("experiments", experiment_name, *parts)
 
     @staticmethod
     def _existing(path: Path) -> Path:

@@ -290,11 +290,24 @@ def create_app(
     ) -> EvaluationResults:
         del auth
         require_ulid(experiment_id, "experiment_id")
+        experiment = control.get_experiment(experiment_id)
         return EvaluationResults(
             experiment_id=experiment_id,
             rows=[
-                EvaluationRow.model_validate(row) for row in result_data.evaluations(experiment_id)
+                EvaluationRow.model_validate(row)
+                for row in result_data.evaluations(experiment_id, str(experiment["name"]))
             ],
+        )
+
+    @app.get("/v1/experiments/{experiment_id}/report", response_class=PlainTextResponse)
+    def experiment_report(
+        experiment_id: str, auth: Annotated[frozenset[str], Depends(scopes)]
+    ) -> PlainTextResponse:
+        del auth
+        require_ulid(experiment_id, "experiment_id")
+        experiment = control.get_experiment(experiment_id)
+        return PlainTextResponse(
+            result_data.report(str(experiment["name"])), media_type="text/markdown"
         )
 
     @app.get("/v1/experiments/{experiment_id}/frontier", response_model=FrontierResults)
@@ -306,13 +319,14 @@ def create_app(
     ) -> FrontierResults:
         del auth
         require_ulid(experiment_id, "experiment_id")
+        experiment = control.get_experiment(experiment_id)
         return FrontierResults(
             experiment_id=experiment_id,
             setting=setting,
             cost=cost,
             rows=[
                 FrontierRow.model_validate(row)
-                for row in result_data.frontier(experiment_id, setting)
+                for row in result_data.frontier(experiment_id, setting, str(experiment["name"]))
             ],
         )
 

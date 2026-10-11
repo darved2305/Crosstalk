@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pyarrow as pa
@@ -179,3 +180,33 @@ def test_artifact_paths_are_contained_and_missing_is_explicit(tmp_path: Path) ->
         assert "escapes" in str(error)
     else:
         raise AssertionError("path traversal was accepted")
+
+
+def test_report_requires_operator_and_reads_existing_artifact(tmp_path: Path) -> None:
+    path = tmp_path / "experiments" / "api-test" / "report.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("# E1 report\n\nMeasured evidence.\n", encoding="utf-8")
+    url = f"/v1/experiments/{EXPERIMENT_ID}/report"
+    with api_client(tmp_path) as api:
+        assert api.get(url).status_code == 401
+        response = api.get(url, headers=auth())
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert response.text.startswith("# E1 report")
+    path.unlink()
+    with api_client(tmp_path) as api:
+        missing = api.get(url, headers=auth())
+    assert missing.status_code == 404
+
+
+def test_results_resolve_name_based_evaluation_output(tmp_path: Path) -> None:
+    result_fixture(tmp_path)
+    source = tmp_path / "experiments" / EXPERIMENT_ID
+    target = tmp_path / "experiments" / "api-test"
+    shutil.move(str(source), str(target))
+    with api_client(tmp_path) as api:
+        results = api.get(f"/v1/experiments/{EXPERIMENT_ID}/results", headers=auth())
+        frontier = api.get(f"/v1/experiments/{EXPERIMENT_ID}/frontier", headers=auth())
+    assert results.status_code == 200
+    assert frontier.status_code == 200
+    assert len(results.json()["rows"]) == len(frontier.json()["rows"]) == 1

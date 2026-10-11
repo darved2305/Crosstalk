@@ -1596,6 +1596,61 @@
         "summary": "Experiment Frontier"
       }
     },
+    "/v1/experiments/{experiment_id}/report": {
+      "get": {
+        "operationId": "experiment_report_v1_experiments__experiment_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Experiment Report"
+      }
+    },
     "/v1/experiments/{experiment_id}/results": {
       "get": {
         "operationId": "experiment_results_v1_experiments__experiment_id__results_get",
