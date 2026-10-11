@@ -100,14 +100,32 @@ def _write_parquet(path: Path, table: str, session_id: str, rows: list[dict[str,
     temporary.replace(path)
 
 
-def _collect_emissions(root: Path, session_id: str, request_ids: set[str]) -> None:
-    rows: list[dict[str, object]] = []
-    for path in sorted((root / "shaper-log").glob("*.ndjson")):
-        with path.open(encoding="utf-8") as source:
-            for line in source:
-                value = json.loads(line)
-                if value["request_id"] in request_ids:
-                    rows.append(value)
+async def _collect_emissions(
+    root: Path, session_id: str, request_ids: set[str], completed_ids: set[str]
+) -> None:
+    # The shaper writes oracle rows through an asynchronous queue. Client EOF does
+    # not prove that its final rows have reached the shared log yet.
+    deadline = asyncio.get_running_loop().time() + 5.0
+    while True:
+        rows: list[dict[str, object]] = []
+        terminated: set[str] = set()
+        for path in sorted((root / "shaper-log").glob("*.ndjson")):
+            with path.open(encoding="utf-8") as source:
+                for line in source:
+                    if not line.endswith("\n"):
+                        continue
+                    value = json.loads(line)
+                    request_id = str(value["request_id"])
+                    if request_id in request_ids:
+                        rows.append(value)
+                        if value["kind"] == "terminator":
+                            terminated.add(request_id)
+        if completed_ids <= terminated:
+            break
+        if asyncio.get_running_loop().time() >= deadline:
+            missing = sorted(completed_ids - terminated)
+            raise CaptureError(f"Emission log is incomplete for {len(missing)} completed requests")
+        await asyncio.sleep(0.05)
     _write_parquet(
         root / "sessions" / session_id / "oracle" / "emissions.parquet",
         "emissions",
@@ -228,12 +246,15 @@ async def run_session(
     text: list[dict[str, object]] = []
     failures = 0
     request_ids: set[str] = set()
+    completed_ids: set[str] = set()
     length_mismatches = 0
     for slot, result in zip(slots, results, strict=True):
         if isinstance(result, BaseException):
             failures += 1
             continue
         request_ids.add(result.request_id)
+        if result.status == 200:
+            completed_ids.add(result.request_id)
         if result.status != 200:
             failures += 1
         requests.append(
@@ -302,7 +323,7 @@ async def run_session(
     _write_parquet(session / "observer" / "flow_hints.parquet", "flow_hints", session_id, hints)
     (session / "observer").chmod(0o775)
     _write_parquet(root / "restricted" / session_id / "text.parquet", "text", session_id, text)
-    _collect_emissions(root, session_id, request_ids)
+    await _collect_emissions(root, session_id, request_ids, completed_ids)
     labels = [
         {
             "request_id": slot["request_id"],
