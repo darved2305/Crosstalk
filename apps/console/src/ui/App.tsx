@@ -41,6 +41,9 @@ export function App() {
   ] as const;
   return (
     <div className="appShell">
+      <a className="skipLink" href="#main">
+        Skip to content
+      </a>
       <aside className="sidebar">
         <div className="brand">
           <span className="brandMark">
@@ -61,13 +64,13 @@ export function App() {
                 `navLink ${isActive || (path === "/" && location.pathname.startsWith("/experiments")) ? "active" : ""}`
               }
             >
-              <Icon size={18} />
+              <Icon size={18} aria-hidden="true" />
               {label}
             </NavLink>
           ))}
         </nav>
         <div className="sidebarFoot">
-          <span className="liveDot" />{" "}
+          <span className="liveDot" aria-hidden="true" />{" "}
           {token ? "API credentials set" : "Not connected"}
         </div>
       </aside>
@@ -79,7 +82,7 @@ export function App() {
           <div className="crumb">
             Research console <span>/</span>{" "}
             {nav.find(([path]) => path === location.pathname)?.[1] ??
-              "Experiment"}
+              (location.pathname === "/new" ? "New experiment" : "Experiment")}
           </div>
           <div className="topActions">
             {token ? (
@@ -95,12 +98,12 @@ export function App() {
             ) : (
               <PanelLeftClose size={18} aria-hidden="true" />
             )}
-            <span className="avatar" aria-label="Operator">
+            <span className="avatar" aria-hidden="true">
               CT
             </span>
           </div>
         </header>
-        <main className="content">
+        <main className="content" id="main" tabIndex={-1}>
           {!token ? (
             <section className="connectCard">
               <div className="cardIcon">

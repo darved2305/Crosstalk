@@ -10,6 +10,15 @@ const job = z.object({
   attempts: z.number().int(),
   max_attempts: z.number().int(),
   error: z.record(z.string(), z.unknown()).nullable().optional(),
+  updated_at: z.iso.datetime({ offset: true }).nullable().optional(),
+});
+
+export const pipelineEvent = z.object({
+  id: ulid,
+  kind: z.string(),
+  session_id: ulid.nullable().optional(),
+  data: z.record(z.string(), z.unknown()),
+  created_at: z.iso.datetime({ offset: true }),
 });
 
 export const session = z.object({
@@ -17,7 +26,7 @@ export const session = z.object({
   experiment_id: ulid,
   state: z.string(),
   cancel_requested: z.boolean(),
-  jobs: z.array(job),
+  jobs: z.array(job).default([]),
 });
 
 export const experimentSummary = z.object({
@@ -41,6 +50,8 @@ export const controlResult = z.object({ id: ulid, state: z.string() });
 export const experimentDetail = experimentSummary.extend({
   config: z.record(z.string(), z.unknown()),
   sessions: z.array(session),
+  jobs: z.array(job).default([]),
+  events: z.array(pipelineEvent).default([]),
 });
 
 export const evaluationResults = z.object({
@@ -142,6 +153,8 @@ export type ExperimentPage = z.infer<typeof experimentPage>;
 export type ExperimentSummary = z.infer<typeof experimentSummary>;
 export type ExperimentDetail = z.infer<typeof experimentDetail>;
 export type Session = z.infer<typeof session>;
+export type Job = z.infer<typeof job>;
+export type PipelineEvent = z.infer<typeof pipelineEvent>;
 export type TraceResults = z.infer<typeof traceResults>;
 export type EvaluationResults = z.infer<typeof evaluationResults>;
 export type FrontierResults = z.infer<typeof frontierResults>;

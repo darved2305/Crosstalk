@@ -401,10 +401,29 @@ export interface components {
             /** Value */
             value: number | null;
         };
+        /** EventView */
+        EventView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Session Id */
+            session_id?: string | null;
+        };
         /** ExperimentConfig */
         ExperimentConfig: {
             analysis?: components["schemas"]["AnalysisConfig"] | null;
             capture?: components["schemas"]["CaptureConfig"] | null;
+            kind?: components["schemas"]["ExperimentKind"] | null;
             /** Name */
             name: string;
             /** Policy Set */
@@ -434,8 +453,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Events */
+            events?: components["schemas"]["EventView"][];
             /** Id */
             id: string;
+            /** Jobs */
+            jobs?: components["schemas"]["JobView"][];
             /** Name */
             name: string;
             /** Sessions */
@@ -451,6 +474,11 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * ExperimentKind
+         * @enum {string}
+         */
+        ExperimentKind: "validation" | "e0" | "e1" | "e2";
         /** ExperimentPage */
         ExperimentPage: {
             /** Items */
@@ -554,6 +582,8 @@ export interface components {
             queue: string;
             /** State */
             state: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** PolicyConfig */
         PolicyConfig: {

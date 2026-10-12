@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const operatorToken = process.env.CT_E2E_OPERATOR_TOKEN ?? "";
+const apiURL = process.env.CT_E2E_API_URL ?? "http://127.0.0.1:18080";
 const experimentId = process.env.CT_E2E_EXPERIMENT_ID ?? "";
 
 test("real PostgreSQL API and console work together", async ({ page, request }) => {
@@ -11,12 +12,12 @@ test("real PostgreSQL API and console work together", async ({ page, request }) 
     "Set CT_E2E_OPERATOR_TOKEN and CT_E2E_EXPERIMENT_ID for the real-stack check.",
   );
 
-  const readiness = await request.get("http://127.0.0.1:18080/readyz");
+  const readiness = await request.get(`${apiURL}/readyz`);
   expect(readiness.status()).toBe(200);
   expect(await readiness.json()).toEqual({ status: "ready" });
 
   const unauthorized = await request.get(
-    "http://127.0.0.1:18080/v1/experiments",
+    `${apiURL}/v1/experiments`,
   );
   expect(unauthorized.status()).toBe(401);
   expect(unauthorized.headers()["content-type"]).toContain(
@@ -42,9 +43,9 @@ test("real PostgreSQL API and console work together", async ({ page, request }) 
   });
 
   await page.goto(`/experiments/${experimentId}`, { waitUntil: "networkidle" });
-  await expect(page.getByText("Sessions & jobs")).toBeVisible();
-  await expect(page.locator(".sessionPanel")).toHaveCount(2);
-  await expect(page.locator(".stageItem")).toHaveCount(2);
+  await expect(page.getByRole("heading", { name: "Session pipelines" })).toBeVisible();
+  await expect(page.locator(".sessionPanel:not(.experimentStages)")).toHaveCount(2);
+  await expect(page.getByRole("list", { name: "Session 1 stages" })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({

@@ -9,8 +9,14 @@ import {
   Search,
   SlidersHorizontal,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
-import { api } from "../lib/client";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { api, errorMessage } from "../lib/client";
+import { allJobs, displayState, pollInterval } from "../lib/pipeline";
+import {
+  buildExperimentConfig,
+  policyCatalog,
+  type ExperimentDraft,
+} from "../lib/experiment-config";
 import {
   experimentCreated,
   experimentDetail,
@@ -24,12 +30,11 @@ function ExperimentCard({ item }: { item: ExperimentSummary }) {
   const details = useQuery({
     queryKey: ["experiment", item.id],
     queryFn: () => api(`/v1/experiments/${item.id}`, experimentDetail),
+    refetchInterval: (q) => pollInterval(q.state.data),
   });
   const sessions = details.data?.sessions ?? [];
-  const jobs = sessions.flatMap((s) => s.jobs);
-  const complete = jobs.filter(
-    (j) => j.state === "succeeded" || j.state === "completed",
-  ).length;
+  const jobs = details.data ? allJobs(details.data) : [];
+  const complete = jobs.filter((j) => j.state === "succeeded").length;
   const failed = jobs.filter(
     (j) => j.state === "failed" || j.state === "dead",
   ).length;
@@ -42,9 +47,14 @@ function ExperimentCard({ item }: { item: ExperimentSummary }) {
           <h3>
             <Link to={`/experiments/${item.id}`}>{item.name}</Link>
           </h3>
-          <p className="cardSub">Experiment · {item.id}</p>
+          <p className="cardSub">
+            {typeof details.data?.config.kind === "string"
+              ? `${details.data.config.kind.toUpperCase()} experiment`
+              : "Experiment"}{" "}
+            · {item.id}
+          </p>
         </div>
-        <Status value={item.state} />
+        <Status value={details.data ? displayState(details.data) : item.state} />
       </div>
       <div className="metricGrid">
         <div className="metricBox">
@@ -86,18 +96,18 @@ function ExperimentCard({ item }: { item: ExperimentSummary }) {
                 .join(" · ") || "No policy set"
             : "Loading policies"}
         </span>
-        <Link className="reviewLink" to={`/experiments/${item.id}`}>
+        <Link
+          className="reviewLink"
+          to={`/experiments/${item.id}`}
+          aria-label={`Open ${item.name}: ${failed} job(s) need attention`}
+        >
           <span className="countChip">{failed}</span>{" "}
           {failed === 1 ? "Job needs attention" : "Jobs need attention"}
-          <ArrowRight size={20} />
+          <ArrowRight size={20} aria-hidden="true" />
         </Link>
       </div>
       {details.error && (
-        <p className="inlineError">
-          {details.error instanceof Error
-            ? details.error.message
-            : "Detail unavailable"}
-        </p>
+        <p className="inlineError">{errorMessage(details.error)}</p>
       )}
       <div className="cardFoot">
         <span>
@@ -117,11 +127,20 @@ function ExperimentCard({ item }: { item: ExperimentSummary }) {
 }
 
 export function Dashboard() {
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [status, setStatus] = useState("all");
-  const [search, setSearch] = useState("");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [params, setParams] = useSearchParams();
+  const status = params.get("state") ?? "all";
+  const search = params.get("q") ?? "";
+  const view = params.get("view") === "list" ? "list" : "grid";
+  const [filterOpen, setFilterOpen] = useState(
+    () => status !== "all" || search !== "",
+  );
   const [cursor, setCursor] = useState<string | null>(null);
+  const update = (key: string, value: string, fallback: string) => {
+    const next = new URLSearchParams(params);
+    if (value === fallback) next.delete(key);
+    else next.set(key, value);
+    setParams(next, { replace: true });
+  };
   const query = useQuery({
     queryKey: ["experiments", cursor],
     queryFn: () =>
@@ -129,6 +148,8 @@ export function Dashboard() {
         `/v1/experiments?limit=50${cursor ? `&cursor=${cursor}` : ""}`,
         experimentPage,
       ),
+    refetchInterval: (q) =>
+      q.state.data?.items.some((i) => i.state === "running") ? 5_000 : false,
   });
   const items = (query.data?.items ?? []).filter(
     (item) =>
@@ -148,13 +169,20 @@ export function Dashboard() {
       <div className="toolbar">
         <div className="toolbarTitle">
           <strong>All experiments</strong>
-          <span>{query.data?.items.length ?? 0} total</span>
+          <span aria-live="polite">
+            {query.data
+              ? items.length === query.data.items.length
+                ? `${query.data.items.length} total`
+                : `${items.length} of ${query.data.items.length} shown`
+              : "…"}
+          </span>
         </div>
         <div className="toolbarActions">
           <button
             className="outlineButton"
             onClick={() => setFilterOpen(!filterOpen)}
             aria-expanded={filterOpen}
+            aria-controls="experiment-filters"
           >
             <Filter size={18} /> Filters
           </button>
@@ -163,7 +191,7 @@ export function Dashboard() {
               aria-label="Grid view"
               aria-pressed={view === "grid"}
               className={view === "grid" ? "selected" : ""}
-              onClick={() => setView("grid")}
+              onClick={() => update("view", "grid", "grid")}
             >
               <LayoutGrid size={18} />
             </button>
@@ -171,7 +199,7 @@ export function Dashboard() {
               aria-label="List view"
               aria-pressed={view === "list"}
               className={view === "list" ? "selected" : ""}
-              onClick={() => setView("list")}
+              onClick={() => update("view", "list", "grid")}
             >
               <List size={18} />
             </button>
@@ -182,18 +210,22 @@ export function Dashboard() {
         </div>
       </div>
       {filterOpen && (
-        <div className="filterPanel">
+        <div className="filterPanel" id="experiment-filters" role="search">
           <label>
             <Search size={16} /> Search
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => update("q", e.target.value, "")}
+              type="search"
               placeholder="Name or experiment ID"
             />
           </label>
           <label>
             Status
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select
+              value={status}
+              onChange={(e) => update("state", e.target.value, "all")}
+            >
               <option value="all">All states</option>
               {["running", "completed", "partial", "failed", "cancelled"].map(
                 (s) => (
@@ -204,7 +236,11 @@ export function Dashboard() {
           </label>
         </div>
       )}
-      <State loading={query.isLoading} error={query.error}>
+      <State
+        loading={query.isLoading}
+        error={query.data ? null : query.error}
+        loadingMessage="Loading experiments…"
+      >
         {query.data &&
           (items.length ? (
             view === "grid" ? (
@@ -272,78 +308,46 @@ export function Dashboard() {
   );
 }
 
-const policyCatalog = [
-  { arm: "a0", kind: "passthrough", name: "D0 · Passthrough", parameters: {} },
-  {
-    arm: "a1",
-    kind: "bucket_pad",
-    name: "D1 · Bucket padding",
-    parameters: { first_bucket: 256 },
-  },
-  {
-    arm: "a2",
-    kind: "window_batch",
-    name: "D2 · Window batching",
-    parameters: { window_ms: 100, max_merge_bytes: 8192 },
-  },
-  {
-    arm: "a3",
-    kind: "constant_rate",
-    name: "D3 · Constant rate",
-    parameters: { interval_ms: 50, record_size: 512, tail_quantum_ticks: 32 },
-  },
-  {
-    arm: "a4",
-    kind: "hybrid",
-    name: "D4 · Hybrid",
-    parameters: { window_ms: 100, max_merge_bytes: 8192, first_bucket: 256 },
-  },
-] as const;
-
 export function NewExperiment() {
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [name, setName] = useState("");
-  const [requests, setRequests] = useState(20);
-  const [concurrency, setConcurrency] = useState(1);
-  const [seed, setSeed] = useState(1);
-  const [arms, setArms] = useState<string[]>(["a0"]);
+  const [draft, setDraft] = useState<ExperimentDraft>({
+    kind: "validation",
+    name: "",
+    requests: 20,
+    perClass: 6,
+    sessions: 2,
+    concurrency: 1,
+    seed: 1,
+    arms: ["a0"],
+  });
+  const set = <K extends keyof ExperimentDraft>(
+    key: K,
+    value: ExperimentDraft[K],
+  ) => setDraft((current) => ({ ...current, [key]: value }));
   const create = useMutation({
-    mutationFn: async () => {
-      const payload = {
-        name: name.trim(),
-        policy_set: policyCatalog
-          .filter((p) => arms.includes(p.arm))
-          .map(({ arm, kind, parameters }) => ({ arm, kind, parameters })),
-        sessions: [
-          {
-            experiment_id: name.trim(),
-            requests,
-            concurrency,
-            seed,
-            arms,
-            validation: true,
-          },
-        ],
-      };
-      return api("/v1/experiments", experimentCreated, {
+    mutationFn: () =>
+      api("/v1/experiments", experimentCreated, {
         method: "POST",
-        body: JSON.stringify(payload),
-      });
-    },
+        body: JSON.stringify(buildExperimentConfig(draft)),
+      }),
     onSuccess: (data) => {
-      client.invalidateQueries({ queryKey: ["experiments"] });
+      void client.invalidateQueries({ queryKey: ["experiments"] });
       navigate(`/experiments/${data.id}`);
     },
   });
+  const number =
+    (key: "requests" | "perClass" | "sessions" | "concurrency" | "seed") =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      set(key, Number(e.target.value));
   return (
     <>
       <div className="pageIntro">
         <p className="eyebrow">CONTROL PLANE</p>
         <h1>New experiment</h1>
         <p>
-          Create a validation experiment with the selected D0–D4 defense arms.
-          Collection begins when you start a run.
+          Create an experiment configuration. Nothing is collected until you
+          start a run from the experiment page.
         </p>
       </div>
       <form
@@ -352,79 +356,152 @@ export function NewExperiment() {
           e.preventDefault();
           create.mutate();
         }}
+        aria-describedby="new-experiment-help"
       >
         <label>
           Experiment name
           <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={draft.name}
+            onChange={(e) => set("name", e.target.value)}
             required
             maxLength={120}
             placeholder="e.g. defense-wire-validation"
           />
         </label>
+        <fieldset>
+          <legend>Experiment type</legend>
+          <div className="checkGrid">
+            <label className="checkOption">
+              <input
+                type="radio"
+                name="kind"
+                checked={draft.kind === "validation"}
+                onChange={() => set("kind", "validation")}
+              />
+              <span>
+                Validation · synthetic requests
+                <small>One session that checks the wire path.</small>
+              </span>
+            </label>
+            <label className="checkOption">
+              <input
+                type="radio"
+                name="kind"
+                checked={draft.kind === "e0"}
+                onChange={() => set("kind", "e0")}
+              />
+              <span>
+                E0 calibration · corpus workload
+                <small>
+                  Block-randomized workloads/v1 sessions, quick analysis.
+                </small>
+              </span>
+            </label>
+          </div>
+        </fieldset>
         <div className="formRow">
-          <label>
-            Requests
-            <input
-              type="number"
-              min="1"
-              max="10000"
-              value={requests}
-              onChange={(e) => setRequests(Number(e.target.value))}
-              required
-            />
-          </label>
+          {draft.kind === "validation" ? (
+            <label>
+              Requests
+              <input
+                type="number"
+                min="1"
+                max="10000"
+                value={draft.requests}
+                onChange={number("requests")}
+                required
+              />
+            </label>
+          ) : (
+            <>
+              <label>
+                Requests per class
+                <input
+                  type="number"
+                  min="1"
+                  max="10000"
+                  value={draft.perClass}
+                  onChange={number("perClass")}
+                  required
+                />
+              </label>
+              <label>
+                Sessions
+                <input
+                  type="number"
+                  min="1"
+                  max="8"
+                  value={draft.sessions}
+                  onChange={number("sessions")}
+                  required
+                />
+              </label>
+            </>
+          )}
           <label>
             Concurrency
             <input
               type="number"
               min="1"
               max="256"
-              value={concurrency}
-              onChange={(e) => setConcurrency(Number(e.target.value))}
+              value={draft.concurrency}
+              onChange={number("concurrency")}
               required
             />
           </label>
           <label>
-            Seed
+            {draft.kind === "e0" ? "First seed" : "Seed"}
             <input
               type="number"
               min="0"
-              value={seed}
-              onChange={(e) => setSeed(Number(e.target.value))}
+              value={draft.seed}
+              onChange={number("seed")}
               required
             />
           </label>
         </div>
-        <fieldset>
-          <legend>Defenses</legend>
-          <div className="checkGrid">
-            {policyCatalog.map((p) => (
-              <label className="checkOption" key={p.arm}>
-                <input
-                  type="checkbox"
-                  checked={arms.includes(p.arm)}
-                  onChange={(e) =>
-                    setArms((current) =>
-                      e.target.checked
-                        ? [...current, p.arm]
-                        : current.filter((a) => a !== p.arm),
-                    )
-                  }
-                />
-                <span>{p.name}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <p className="helper">
-          This form creates a synthetic validation session. Corpus-driven E0–E2
-          configurations can be submitted to the same API using the repository’s
-          experiment YAML files.
+        {draft.kind === "validation" && (
+          <fieldset>
+            <legend>Defenses</legend>
+            <div className="checkGrid">
+              {policyCatalog.map((p) => (
+                <label className="checkOption" key={p.arm}>
+                  <input
+                    type="checkbox"
+                    checked={draft.arms.includes(p.arm)}
+                    onChange={(e) =>
+                      set(
+                        "arms",
+                        e.target.checked
+                          ? [...draft.arms, p.arm]
+                          : draft.arms.filter((a) => a !== p.arm),
+                      )
+                    }
+                  />
+                  <span>{p.name}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        <p className="helper" id="new-experiment-help">
+          {draft.kind === "e0"
+            ? `E0 creates ${draft.sessions} session(s) with seeds ${draft.seed}–${draft.seed + draft.sessions - 1} and a development analysis preset (chance + logistic regression, 100 bootstrap resamples). Results from a mock upstream lab are NOT REPORTABLE.`
+            : "Validation creates one synthetic-request session. Full E1/E2 configurations can be submitted to the same API from the repository’s experiment YAML files."}
         </p>
-        {create.error && <p className="inlineError">{create.error.message}</p>}
-        <button className="primary" disabled={create.isPending || !arms.length}>
+        {create.error && (
+          <p className="notice error" role="alert">
+            Could not create experiment. {errorMessage(create.error)}
+          </p>
+        )}
+        <button
+          className="primary"
+          disabled={
+            create.isPending ||
+            (draft.kind === "validation" && !draft.arms.length)
+          }
+          aria-busy={create.isPending}
+        >
           {create.isPending ? "Creating…" : "Create experiment"}
         </button>
       </form>
