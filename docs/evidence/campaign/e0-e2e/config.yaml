@@ -1,0 +1,117 @@
+analysis:
+  alpha: 0.05
+  bootstrap: 200
+  inner_folds: 3
+  learning_curve: true
+  max_per_class: 300
+  models:
+  - chance
+  - majority
+  - lr
+  - lgbm
+  null_bootstrap: 100
+  null_models:
+  - lr
+  null_permutations: 2
+  outer_folds: 5
+  planned_per_class: 200
+  primary_model: lgbm
+  primary_representation: r1
+  representations:
+  - r1
+  - r2
+  - tlen
+  seed: 0
+  seeds: 1
+  sensitive_base_rates:
+  - 10
+  - 100
+  - 1000
+  target_half_width: 0.05
+capture: null
+name: e0-e2e
+policy_set:
+- arm: a0
+  kind: passthrough
+  parameters: {}
+sessions:
+- arm: a0
+  arms: null
+  classes: null
+  concurrency: 6
+  concurrency_levels: null
+  cycles: 1
+  determinism_every: 8
+  experiment_id: e0-e2e
+  max_completion_tokens: 512
+  model: mock
+  per_class: 10
+  regime: NAT
+  requests: null
+  seed: 11
+  stream_interval: 1
+  stream_interval_arms:
+  - a0
+  - a2
+  stream_interval_variants: []
+  target_lengths:
+  - 96
+  - 160
+  - 224
+  temperature: 0.7
+  validation: false
+  warmup: 2
+  workload: C:\Users\mites\OneDrive\Desktop\Web_Development projects\Devops Mini Project\artifacts\report-campaign-20261012\test_e0_end_to_end0\artifacts\workloads\v1
+- arm: a0
+  arms: null
+  classes: null
+  concurrency: 6
+  concurrency_levels: null
+  cycles: 1
+  determinism_every: 8
+  experiment_id: e0-e2e
+  max_completion_tokens: 512
+  model: mock
+  per_class: 10
+  regime: MATCH-P
+  requests: null
+  seed: 12
+  stream_interval: 1
+  stream_interval_arms:
+  - a0
+  - a2
+  stream_interval_variants: []
+  target_lengths:
+  - 96
+  - 160
+  - 224
+  temperature: 0.7
+  validation: false
+  warmup: 2
+  workload: C:\Users\mites\OneDrive\Desktop\Web_Development projects\Devops Mini Project\artifacts\report-campaign-20261012\test_e0_end_to_end0\artifacts\workloads\v1
+- arm: a0
+  arms: null
+  classes: null
+  concurrency: 6
+  concurrency_levels: null
+  cycles: 1
+  determinism_every: 8
+  experiment_id: e0-e2e
+  max_completion_tokens: 512
+  model: mock
+  per_class: 10
+  regime: MATCH-PR
+  requests: null
+  seed: 13
+  stream_interval: 1
+  stream_interval_arms:
+  - a0
+  - a2
+  stream_interval_variants: []
+  target_lengths:
+  - 24
+  - 40
+  temperature: 0.7
+  validation: false
+  warmup: 2
+  workload: C:\Users\mites\OneDrive\Desktop\Web_Development projects\Devops Mini Project\artifacts\report-campaign-20261012\test_e0_end_to_end0\artifacts\workloads\v1

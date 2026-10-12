@@ -1,0 +1,125 @@
+analysis:
+  alpha: 0.05
+  bootstrap: 200
+  inner_folds: 3
+  learning_curve: true
+  max_per_class: 300
+  models:
+  - chance
+  - lr
+  null_bootstrap: 500
+  null_models:
+  - lr
+  - lgbm
+  null_permutations: 20
+  outer_folds: 5
+  planned_per_class: 200
+  primary_model: lr
+  primary_representation: r1
+  representations:
+  - r1
+  seed: 0
+  seeds: 1
+  sensitive_base_rates:
+  - 10
+  - 100
+  - 1000
+  target_half_width: 0.05
+capture: null
+name: e2-e2e
+policy_set:
+- arm: a0
+  kind: passthrough
+  parameters: {}
+- arm: a1
+  kind: bucket_pad
+  parameters:
+    first_bucket: 256
+- arm: a2
+  kind: window_batch
+  parameters:
+    window_ms: 15
+- arm: a4
+  kind: hybrid
+  parameters:
+    first_bucket: 256
+    window_ms: 15
+- arm: a3
+  kind: constant_rate
+  parameters:
+    interval_ms: 5
+    record_size: 512
+    tail_quantum_ticks: 4
+sessions:
+- arm: a0
+  arms:
+  - a0
+  - a2
+  - a3
+  classes:
+  - cooking
+  - legal
+  - medical
+  concurrency: 4
+  concurrency_levels:
+  - 1
+  - 4
+  cycles: 2
+  determinism_every: 10
+  experiment_id: e2-e2e
+  max_completion_tokens: 512
+  model: mock
+  per_class: 6
+  regime: NAT
+  requests: null
+  seed: 31
+  stream_interval: 1
+  stream_interval_arms:
+  - a0
+  - a2
+  stream_interval_variants:
+  - 4
+  target_lengths:
+  - 96
+  - 160
+  - 224
+  temperature: 0.7
+  validation: false
+  warmup: 2
+  workload: C:\Users\mites\OneDrive\Desktop\Web_Development projects\Devops Mini Project\artifacts\report-campaign-20261012\test_e2_end_to_end0\artifacts\workloads\v1
+- arm: a0
+  arms:
+  - a0
+  - a2
+  - a3
+  classes:
+  - cooking
+  - legal
+  - medical
+  concurrency: 4
+  concurrency_levels:
+  - 1
+  - 4
+  cycles: 2
+  determinism_every: 10
+  experiment_id: e2-e2e
+  max_completion_tokens: 512
+  model: mock
+  per_class: 6
+  regime: NAT
+  requests: null
+  seed: 32
+  stream_interval: 1
+  stream_interval_arms:
+  - a0
+  - a2
+  stream_interval_variants:
+  - 4
+  target_lengths:
+  - 96
+  - 160
+  - 224
+  temperature: 0.7
+  validation: false
+  warmup: 2
+  workload: C:\Users\mites\OneDrive\Desktop\Web_Development projects\Devops Mini Project\artifacts\report-campaign-20261012\test_e2_end_to_end0\artifacts\workloads\v1

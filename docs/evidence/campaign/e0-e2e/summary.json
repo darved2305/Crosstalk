@@ -1,0 +1,436 @@
+{
+  "experiment_id": "e0-e2e",
+  "config_sha256": "d60dbea011a681e5d76f773a658bd0c08f4f0a2835f8da1aa1d463847453da71",
+  "reportable": false,
+  "sessions": [
+    {
+      "session_id": "01M4QMFXR6EAGQTVC01PPZVNZA",
+      "status": "PARTIAL",
+      "git_dirty": false,
+      "git_commit": "54828bb6e579292f30db804ff5cd8bdc9b766827",
+      "workload_sha256": "7bf110d02ffe2c2d1581b7186ad78ae3cb71c0c7f6008dfe5bd67d41f1fcf3f3",
+      "reasons": [
+        "Reconstruction and independent validation pending"
+      ],
+      "regimes": "NAT"
+    },
+    {
+      "session_id": "01M4QMG2R0Z4B4SJRX8NSTB2EV",
+      "status": "PARTIAL",
+      "git_dirty": false,
+      "git_commit": "54828bb6e579292f30db804ff5cd8bdc9b766827",
+      "workload_sha256": "7bf110d02ffe2c2d1581b7186ad78ae3cb71c0c7f6008dfe5bd67d41f1fcf3f3",
+      "reasons": [
+        "Reconstruction and independent validation pending"
+      ],
+      "regimes": "MATCH-P"
+    },
+    {
+      "session_id": "01M4QMG80CRVTXG0WD9DRKD154",
+      "status": "PARTIAL",
+      "git_dirty": false,
+      "git_commit": "54828bb6e579292f30db804ff5cd8bdc9b766827",
+      "workload_sha256": "7bf110d02ffe2c2d1581b7186ad78ae3cb71c0c7f6008dfe5bd67d41f1fcf3f3",
+      "reasons": [
+        "Reconstruction and independent validation pending"
+      ],
+      "regimes": "MATCH-PR"
+    }
+  ],
+  "classes": [
+    "cooking",
+    "finance",
+    "legal",
+    "medical",
+    "programming",
+    "travel"
+  ],
+  "sensitive_class": "medical",
+  "regimes": [
+    "NAT",
+    "MATCH-P",
+    "MATCH-PR"
+  ],
+  "data": {
+    "NAT": {
+      "traces": 60,
+      "families": 60,
+      "per_class": {
+        "cooking": 10,
+        "finance": 10,
+        "legal": 10,
+        "medical": 10,
+        "programming": 10,
+        "travel": 10
+      }
+    },
+    "MATCH-P": {
+      "traces": 60,
+      "families": 57,
+      "per_class": {
+        "cooking": 10,
+        "finance": 10,
+        "legal": 10,
+        "medical": 10,
+        "programming": 10,
+        "travel": 10
+      }
+    },
+    "MATCH-PR": {
+      "traces": 60,
+      "families": 56,
+      "per_class": {
+        "cooking": 10,
+        "finance": 10,
+        "legal": 10,
+        "medical": 10,
+        "programming": 10,
+        "travel": 10
+      }
+    }
+  },
+  "excluded": {},
+  "null_control": {
+    "NAT": {
+      "lr": {
+        "permutations": 2,
+        "chance": 0.16666666666666666,
+        "null_mean": 0.19999999999999998,
+        "null_max": 0.28333333333333327,
+        "chance_within_ci": 1,
+        "passes": false,
+        "observed": 0.16666666666666666,
+        "p_value": 0.6666666666666666,
+        "runs": [
+          {
+            "value": 0.28333333333333327,
+            "ci_lo": 0.19999999999999998,
+            "ci_hi": 0.37541666666666657
+          },
+          {
+            "value": 0.11666666666666668,
+            "ci_lo": 0.05,
+            "ci_hi": 0.18333333333333335
+          }
+        ]
+      }
+    },
+    "MATCH-P": {
+      "lr": {
+        "permutations": 2,
+        "chance": 0.16666666666666666,
+        "null_mean": 0.1477272727272727,
+        "null_max": 0.14848484848484847,
+        "chance_within_ci": 2,
+        "passes": true,
+        "observed": 0.18333333333333335,
+        "p_value": 0.3333333333333333,
+        "runs": [
+          {
+            "value": 0.14848484848484847,
+            "ci_lo": 0.07871212121212122,
+            "ci_hi": 0.22104166666666658
+          },
+          {
+            "value": 0.14696969696969697,
+            "ci_lo": 0.0785897435897436,
+            "ci_hi": 0.2289962121212121
+          }
+        ]
+      }
+    },
+    "MATCH-PR": {
+      "lr": {
+        "permutations": 2,
+        "chance": 0.16666666666666666,
+        "null_mean": 0.1734848484848485,
+        "null_max": 0.2432659932659933,
+        "chance_within_ci": 2,
+        "passes": true,
+        "observed": 0.08333333333333333,
+        "p_value": 1.0,
+        "runs": [
+          {
+            "value": 0.2432659932659933,
+            "ci_lo": 0.1484027777777778,
+            "ci_hi": 0.33559764309764306
+          },
+          {
+            "value": 0.10370370370370369,
+            "ci_lo": 0.03333333333333333,
+            "ci_hi": 0.17504629629629628
+          }
+        ]
+      }
+    }
+  },
+  "noise_floor": {
+    "NAT": {
+      "n": 7,
+      "prompts": 7,
+      "resp_count": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "duration_ms": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "ttft_ms": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      }
+    },
+    "MATCH-P": {
+      "n": 7,
+      "prompts": 7,
+      "resp_count": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "duration_ms": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "ttft_ms": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      }
+    },
+    "MATCH-PR": {
+      "n": 7,
+      "prompts": 7,
+      "resp_count": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "duration_ms": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "ttft_ms": {
+        "icc": NaN,
+        "within_var": NaN,
+        "between_var": NaN,
+        "drift": {
+          "slope_per_hour": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      }
+    }
+  },
+  "power": {
+    "regime": "NAT",
+    "model": "lr",
+    "pilot_per_class": 10,
+    "bootstrap_se": 0.04505711680109696,
+    "planned_per_class": 200,
+    "planned_half_width": 0.02792669032277443,
+    "recommended_per_class": 63,
+    "meets_target_at_max": true,
+    "half_width_at_max": 0.022802047165172732,
+    "target_half_width": 0.05
+  },
+  "learning_curve": {
+    "NAT": {
+      "lr": [
+        {
+          "fraction": 0.25,
+          "skipped": "Class 0 has 2 families; 3 folds need at least as many"
+        },
+        {
+          "fraction": 0.5,
+          "value": 0.06666666666666667,
+          "ci_lo": 0.03333333333333333,
+          "ci_hi": 0.11666666666666665
+        },
+        {
+          "fraction": 0.75,
+          "value": 0.05000000000000001,
+          "ci_lo": 0.0,
+          "ci_hi": 0.11666666666666665
+        },
+        {
+          "fraction": 1.0,
+          "value": 0.16666666666666666,
+          "ci_lo": 0.08333333333333333,
+          "ci_hi": 0.25000000000000006
+        }
+      ],
+      "lgbm": [
+        {
+          "fraction": 0.25,
+          "skipped": "Class 0 has 2 families; 3 folds need at least as many"
+        },
+        {
+          "fraction": 0.5,
+          "value": 0.16666666666666666,
+          "ci_lo": 0.16666666666666666,
+          "ci_hi": 0.16666666666666666
+        },
+        {
+          "fraction": 0.75,
+          "value": 0.16666666666666666,
+          "ci_lo": 0.16666666666666666,
+          "ci_hi": 0.16666666666666666
+        },
+        {
+          "fraction": 1.0,
+          "value": 0.16666666666666666,
+          "ci_lo": 0.09999999999999999,
+          "ci_hi": 0.25
+        }
+      ]
+    },
+    "MATCH-P": {
+      "lr": [
+        {
+          "fraction": 0.25,
+          "skipped": "Class 0 has 2 families; 3 folds need at least as many"
+        },
+        {
+          "fraction": 0.5,
+          "value": 0.08333333333333333,
+          "ci_lo": 0.03333333333333333,
+          "ci_hi": 0.15
+        },
+        {
+          "fraction": 0.75,
+          "value": 0.08333333333333333,
+          "ci_lo": 0.016666666666666666,
+          "ci_hi": 0.15
+        },
+        {
+          "fraction": 1.0,
+          "value": 0.18333333333333335,
+          "ci_lo": 0.08583333333333334,
+          "ci_hi": 0.2935648148148148
+        }
+      ],
+      "lgbm": [
+        {
+          "fraction": 0.25,
+          "skipped": "Class 0 has 2 families; 3 folds need at least as many"
+        },
+        {
+          "fraction": 0.5,
+          "value": 0.15,
+          "ci_lo": 0.08015151515151517,
+          "ci_hi": 0.26023148148148145
+        },
+        {
+          "fraction": 0.75,
+          "value": 0.18333333333333335,
+          "ci_lo": 0.14108164983164986,
+          "ci_hi": 0.2333333333333333
+        },
+        {
+          "fraction": 1.0,
+          "value": 0.13333333333333333,
+          "ci_lo": 0.05882122507122511,
+          "ci_hi": 0.19736111111111104
+        }
+      ]
+    },
+    "MATCH-PR": {
+      "lr": [
+        {
+          "fraction": 0.25,
+          "skipped": "Class 0 has 2 families; 3 folds need at least as many"
+        },
+        {
+          "fraction": 0.5,
+          "value": 0.13333333333333333,
+          "ci_lo": 0.05026094276094277,
+          "ci_hi": 0.2597348484848484
+        },
+        {
+          "fraction": 0.75,
+          "value": 0.11666666666666665,
+          "ci_lo": 0.05,
+          "ci_hi": 0.17416666666666664
+        },
+        {
+          "fraction": 1.0,
+          "value": 0.08333333333333333,
+          "ci_lo": 0.028977272727272733,
+          "ci_hi": 0.16563762626262624
+        }
+      ],
+      "lgbm": [
+        {
+          "fraction": 0.25,
+          "skipped": "Class 0 has 2 families; 3 folds need at least as many"
+        },
+        {
+          "fraction": 0.5,
+          "value": 0.16666666666666666,
+          "ci_lo": 0.08976851851851853,
+          "ci_hi": 0.2557977207977208
+        },
+        {
+          "fraction": 0.75,
+          "value": 0.15,
+          "ci_lo": 0.06675084175084177,
+          "ci_hi": 0.2414562289562289
+        },
+        {
+          "fraction": 1.0,
+          "value": 0.18333333333333335,
+          "ci_lo": 0.10000000000000002,
+          "ci_hi": 0.29118686868686866
+        }
+      ]
+    }
+  },
+  "feature_schema_version": "1"
+}

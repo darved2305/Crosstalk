@@ -1,0 +1,28 @@
+{
+  "checked_at": "2026-10-12T08:49:01.713237+00:00",
+  "project_id": "inspired-campus-436516-k4",
+  "read_only": true,
+  "deployment_performed": false,
+  "screenshots_available": false,
+  "commands": [
+    {
+      "command": "gcloud billing projects describe inspired-campus-436516-k4 --format=json",
+      "returncode": 0,
+      "stdout": "{\n  \"billingAccountName\": \"\",\n  \"billingEnabled\": false,\n  \"name\": \"projects/inspired-campus-436516-k4/billingInfo\",\n  \"projectId\": \"inspired-campus-436516-k4\"\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": "gcloud compute instances list --project=inspired-campus-436516-k4 --format=json(name,status,zone)",
+      "returncode": 0,
+      "stdout": "[]\n",
+      "stderr": "WARNING: Some requests did not succeed.\n - This API method requires billing to be enabled. Please enable billing on project #inspired-campus-436516-k4 by visiting https://console.developers.google.com/billing/enable?project=inspired-campus-436516-k4 then retry. If you enabled billing for this project recently, wait a few minutes for the action to propagate to our systems and retry.\n\n"
+    },
+    {
+      "command": "gcloud run services list --project=inspired-campus-436516-k4 --format=json(metadata.name,status.conditions)",
+      "returncode": 0,
+      "stdout": "[\n  {\n    \"metadata\": {\n      \"name\": \"billing-killswitch\"\n    },\n    \"status\": {\n      \"conditions\": [\n        {\n          \"lastTransitionTime\": \"2026-08-25T09:31:46.667432Z\",\n          \"status\": \"True\",\n          \"type\": \"Ready\"\n        },\n        {\n          \"lastTransitionTime\": \"2026-08-25T09:31:41.843363Z\",\n          \"status\": \"True\",\n          \"type\": \"ConfigurationsReady\"\n        },\n        {\n          \"lastTransitionTime\": \"2026-08-25T09:31:46.625493Z\",\n          \"status\": \"True\",\n          \"type\": \"RoutesReady\"\n        }\n      ]\n    }\n  }\n]\n",
+      "stderr": ""
+    }
+  ],
+  "limitation": "Billing disabled; live CrossTalk deployment cannot be tested under the no-billing constraint."
+}

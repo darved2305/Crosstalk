@@ -1,0 +1,443 @@
+{
+  "experiment_id": "e1-e2e",
+  "config_sha256": "1787a38efdf975cbb0734113723fe7213b648bd796eb5e25f7391704c92b363c",
+  "reportable": false,
+  "sessions": [
+    {
+      "session_id": "01M4QMMZMNV5XGH7YG5J535BAX",
+      "status": "PARTIAL",
+      "git_dirty": true,
+      "git_commit": "54828bb6e579292f30db804ff5cd8bdc9b766827",
+      "reasons": [
+        "Reconstruction and independent validation pending"
+      ]
+    }
+  ],
+  "arms": [
+    "a0",
+    "a1",
+    "a2",
+    "a3",
+    "a4"
+  ],
+  "classes": [
+    "cooking",
+    "finance",
+    "legal",
+    "medical",
+    "programming",
+    "travel"
+  ],
+  "regimes": [
+    "NAT"
+  ],
+  "data": {
+    "NAT": {
+      "a0": {
+        "traces": 48,
+        "families": 48
+      },
+      "a1": {
+        "traces": 48,
+        "families": 48
+      },
+      "a2": {
+        "traces": 48,
+        "families": 48
+      },
+      "a3": {
+        "traces": 48,
+        "families": 48
+      },
+      "a4": {
+        "traces": 48,
+        "families": 48
+      }
+    }
+  },
+  "excluded": {},
+  "primary": {
+    "NAT": {
+      "model": "lr",
+      "representation": "r1",
+      "baseline_balanced_accuracy": 0.10416666666666667,
+      "chance": 0.16666666666666666,
+      "alpha": 0.05,
+      "tests": {
+        "a1/static": {
+          "arm": "a1",
+          "setting": "static",
+          "balanced_accuracy": 0.14583333333333334,
+          "delta": {
+            "value": 0.04166666666666667,
+            "ci_lo": -0.08333333333333334,
+            "ci_hi": 0.14583333333333331,
+            "p": 0.56
+          },
+          "rho": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          },
+          "holm": {
+            "p": 0.56,
+            "p_holm": 1.0,
+            "reject": false
+          }
+        },
+        "a1/adaptive": {
+          "arm": "a1",
+          "setting": "adaptive",
+          "balanced_accuracy": 0.1875,
+          "delta": {
+            "value": 0.08333333333333333,
+            "ci_lo": -0.020833333333333315,
+            "ci_hi": 0.1875,
+            "p": 0.15
+          },
+          "rho": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          },
+          "holm": {
+            "p": 0.15,
+            "p_holm": 1.0,
+            "reject": false
+          }
+        },
+        "a2/static": {
+          "arm": "a2",
+          "setting": "static",
+          "balanced_accuracy": 0.1875,
+          "delta": {
+            "value": 0.08333333333333333,
+            "ci_lo": -0.020833333333333343,
+            "ci_hi": 0.1875,
+            "p": 0.21
+          },
+          "rho": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          },
+          "holm": {
+            "p": 0.21,
+            "p_holm": 1.0,
+            "reject": false
+          }
+        },
+        "a2/adaptive": {
+          "arm": "a2",
+          "setting": "adaptive",
+          "balanced_accuracy": 0.125,
+          "delta": {
+            "value": 0.02083333333333333,
+            "ci_lo": -0.10416666666666666,
+            "ci_hi": 0.14583333333333331,
+            "p": 0.86
+          },
+          "rho": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          },
+          "holm": {
+            "p": 0.86,
+            "p_holm": 1.0,
+            "reject": false
+          }
+        },
+        "a3/static": {
+          "arm": "a3",
+          "setting": "static",
+          "balanced_accuracy": 0.16666666666666666,
+          "delta": {
+            "value": 0.062499999999999986,
+            "ci_lo": -0.020833333333333343,
+            "ci_hi": 0.125,
+            "p": 0.19
+          },
+          "rho": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          },
+          "holm": {
+            "p": 0.19,
+            "p_holm": 1.0,
+            "reject": false
+          }
+        },
+        "a3/adaptive": {
+          "arm": "a3",
+          "setting": "adaptive",
+          "balanced_accuracy": 0.041666666666666664,
+          "delta": {
+            "value": -0.0625,
+            "ci_lo": -0.16666666666666666,
+            "ci_hi": 0.020833333333333336,
+            "p": 0.28
+          },
+          "rho": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          },
+          "holm": {
+            "p": 0.28,
+            "p_holm": 1.0,
+            "reject": false
+          }
+        },
+        "a4/static": {
+          "arm": "a4",
+          "setting": "static",
+          "balanced_accuracy": 0.14583333333333334,
+          "delta": {
+            "value": 0.04166666666666667,
+            "ci_lo": -0.08333333333333334,
+            "ci_hi": 0.14583333333333331,
+            "p": 0.56
+          },
+          "rho": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          },
+          "holm": {
+            "p": 0.56,
+            "p_holm": 1.0,
+            "reject": false
+          }
+        },
+        "a4/adaptive": {
+          "arm": "a4",
+          "setting": "adaptive",
+          "balanced_accuracy": 0.1875,
+          "delta": {
+            "value": 0.08333333333333333,
+            "ci_lo": -0.020833333333333315,
+            "ci_hi": 0.1875,
+            "p": 0.19
+          },
+          "rho": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          },
+          "holm": {
+            "p": 0.19,
+            "p_holm": 1.0,
+            "reject": false
+          }
+        }
+      },
+      "retained_leakage": {
+        "a1": {
+          "static": NaN,
+          "adaptive": NaN,
+          "recovery": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          }
+        },
+        "a2": {
+          "static": NaN,
+          "adaptive": NaN,
+          "recovery": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          }
+        },
+        "a3": {
+          "static": NaN,
+          "adaptive": NaN,
+          "recovery": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          }
+        },
+        "a4": {
+          "static": NaN,
+          "adaptive": NaN,
+          "recovery": {
+            "value": NaN,
+            "ci_lo": NaN,
+            "ci_hi": NaN
+          }
+        }
+      }
+    }
+  },
+  "costs": {
+    "NAT": {
+      "a0": {
+        "n": 48,
+        "ttft_ms": {
+          "p50": 134.91264999999999,
+          "p95": 326.04472,
+          "p99": 939.235952000001
+        },
+        "itl_ms": {
+          "p50": 17.788899999999998,
+          "p95": 55.030370000000005,
+          "p99": 110.30834800000014
+        },
+        "duration_ms": {
+          "p50": 645.3342,
+          "p95": 1598.8954549999996,
+          "p99": 2390.250578
+        },
+        "timer_lateness_ms": null,
+        "wire_bytes_mean": 10323.8125,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0
+      },
+      "a1": {
+        "n": 48,
+        "ttft_ms": {
+          "p50": 151.3579,
+          "p95": 319.5878399999999,
+          "p99": 922.4282240000008
+        },
+        "itl_ms": {
+          "p50": 16.6267,
+          "p95": 50.577940000000005,
+          "p99": 94.46489400000002
+        },
+        "duration_ms": {
+          "p50": 593.86165,
+          "p95": 1423.1990699999994,
+          "p99": 1953.8456030000007
+        },
+        "timer_lateness_ms": null,
+        "wire_bytes_mean": 12031.479166666666,
+        "pad_bytes_mean": 1707.8125,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": 16.541046891995247,
+          "ci_lo": 16.27465279366309,
+          "ci_hi": 16.811716210708042
+        },
+        "ttft_p50_delta_ms": {
+          "value": 16.686200000000014,
+          "ci_lo": -10.724724999999976,
+          "ci_hi": 36.15379750000001
+        }
+      },
+      "a2": {
+        "n": 48,
+        "ttft_ms": {
+          "p50": 156.1266,
+          "p95": 324.56618999999995,
+          "p99": 484.661781
+        },
+        "itl_ms": {
+          "p50": 27.0956,
+          "p95": 71.70285999999999,
+          "p99": 124.39554599999994
+        },
+        "duration_ms": {
+          "p50": 682.2769000000001,
+          "p95": 1316.5100249999998,
+          "p99": 1990.0043900000005
+        },
+        "timer_lateness_ms": {
+          "p50": 9.3579,
+          "p95": 35.21269999999999,
+          "p99": 58.386158
+        },
+        "wire_bytes_mean": 8658.1875,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": -16.133816843341542,
+          "ci_lo": -17.63062343894722,
+          "ci_hi": -14.330731972352975
+        },
+        "ttft_p50_delta_ms": {
+          "value": 21.855999999999995,
+          "ci_lo": -3.6551000000000045,
+          "ci_hi": 40.45437499999999
+        }
+      },
+      "a3": {
+        "n": 48,
+        "ttft_ms": {
+          "p50": 143.6567,
+          "p95": 286.043735,
+          "p99": 302.95752100000004
+        },
+        "itl_ms": {
+          "p50": 18.25535,
+          "p95": 63.59710499999986,
+          "p99": 132.4252029999999
+        },
+        "duration_ms": {
+          "p50": 660.3091,
+          "p95": 1696.8800549999999,
+          "p99": 2012.602325
+        },
+        "timer_lateness_ms": {
+          "p50": 13.61715,
+          "p95": 102.61477500000001,
+          "p99": 247.3424199999996
+        },
+        "wire_bytes_mean": 72336.79166666667,
+        "pad_bytes_mean": 59894.458333333336,
+        "dummies_mean": 99.5,
+        "bandwidth_overhead_pct": {
+          "value": 600.6790530791475,
+          "ci_lo": 507.37400041267705,
+          "ci_hi": 724.5139784188959
+        },
+        "ttft_p50_delta_ms": {
+          "value": 5.444099999999992,
+          "ci_lo": -13.385045000000005,
+          "ci_hi": 30.798737500000037
+        }
+      },
+      "a4": {
+        "n": 48,
+        "ttft_ms": {
+          "p50": 139.59910000000002,
+          "p95": 318.764305,
+          "p99": 398.35015100000015
+        },
+        "itl_ms": {
+          "p50": 25.50375,
+          "p95": 75.307525,
+          "p99": 161.0782399999999
+        },
+        "duration_ms": {
+          "p50": 672.17455,
+          "p95": 1620.21896,
+          "p99": 2076.5162970000006
+        },
+        "timer_lateness_ms": {
+          "p50": 9.41855,
+          "p95": 36.956879999999956,
+          "p99": 82.49097399999934
+        },
+        "wire_bytes_mean": 10027.708333333334,
+        "pad_bytes_mean": 1482.5208333333333,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": -2.8681668392046666,
+          "ci_lo": -5.123987495112141,
+          "ci_hi": -0.5644665016795084
+        },
+        "ttft_p50_delta_ms": {
+          "value": 6.732200000000006,
+          "ci_lo": -23.36708499999997,
+          "ci_hi": 20.479295000000008
+        }
+      }
+    }
+  },
+  "feature_schema_version": "1"
+}

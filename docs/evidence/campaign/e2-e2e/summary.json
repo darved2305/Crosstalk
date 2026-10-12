@@ -1,0 +1,1104 @@
+{
+  "experiment_id": "e2-e2e",
+  "config_sha256": "f84da4a0fe79c42d9aa23765175e6964798dd280090d32c30a4fb16a0d195508",
+  "reportable": false,
+  "sessions": [
+    {
+      "session_id": "01M4QMQ5H6T34P9YRGWHY51ZQG",
+      "status": "PARTIAL",
+      "git_dirty": true,
+      "git_commit": "54828bb6e579292f30db804ff5cd8bdc9b766827",
+      "reasons": [
+        "Reconstruction and independent validation pending"
+      ],
+      "blocks": [
+        {
+          "cblock": 0,
+          "concurrency": 1,
+          "slots": 51,
+          "start_monotonic_ns": 188406361029500,
+          "end_monotonic_ns": 188417180599700
+        },
+        {
+          "cblock": 1,
+          "concurrency": 4,
+          "slots": 52,
+          "start_monotonic_ns": 188417180610700,
+          "end_monotonic_ns": 188421447684900
+        },
+        {
+          "cblock": 2,
+          "concurrency": 1,
+          "slots": 51,
+          "start_monotonic_ns": 188421447697900,
+          "end_monotonic_ns": 188431352002500
+        },
+        {
+          "cblock": 3,
+          "concurrency": 4,
+          "slots": 52,
+          "start_monotonic_ns": 188431352024800,
+          "end_monotonic_ns": 188434622968700
+        }
+      ]
+    },
+    {
+      "session_id": "01M4QMR1JGVX0EPHD74KAQP6A0",
+      "status": "PARTIAL",
+      "git_dirty": true,
+      "git_commit": "54828bb6e579292f30db804ff5cd8bdc9b766827",
+      "reasons": [
+        "Reconstruction and independent validation pending"
+      ],
+      "blocks": [
+        {
+          "cblock": 0,
+          "concurrency": 1,
+          "slots": 51,
+          "start_monotonic_ns": 188435024954500,
+          "end_monotonic_ns": 188444383767800
+        },
+        {
+          "cblock": 1,
+          "concurrency": 4,
+          "slots": 52,
+          "start_monotonic_ns": 188444383777300,
+          "end_monotonic_ns": 188447879954400
+        },
+        {
+          "cblock": 2,
+          "concurrency": 1,
+          "slots": 51,
+          "start_monotonic_ns": 188447879965900,
+          "end_monotonic_ns": 188457837386100
+        },
+        {
+          "cblock": 3,
+          "concurrency": 4,
+          "slots": 52,
+          "start_monotonic_ns": 188457837397000,
+          "end_monotonic_ns": 188461358750700
+        }
+      ]
+    }
+  ],
+  "levels": [
+    1,
+    4
+  ],
+  "base_interval": 1,
+  "conditions": [
+    "a0",
+    "a0/si4",
+    "a2",
+    "a2/si4",
+    "a3"
+  ],
+  "classes": [
+    "cooking",
+    "legal",
+    "medical"
+  ],
+  "data": {
+    "1": {
+      "a0": {
+        "traces": 36,
+        "families": 34
+      },
+      "a0/si4": {
+        "traces": 36,
+        "families": 34
+      },
+      "a2": {
+        "traces": 36,
+        "families": 34
+      },
+      "a2/si4": {
+        "traces": 36,
+        "families": 34
+      },
+      "a3": {
+        "traces": 36,
+        "families": 34
+      }
+    },
+    "4": {
+      "a0": {
+        "traces": 36,
+        "families": 34
+      },
+      "a0/si4": {
+        "traces": 36,
+        "families": 34
+      },
+      "a2": {
+        "traces": 36,
+        "families": 34
+      },
+      "a2/si4": {
+        "traces": 36,
+        "families": 34
+      },
+      "a3": {
+        "traces": 36,
+        "families": 34
+      }
+    }
+  },
+  "excluded": {},
+  "contrasts": {
+    "model": "lr",
+    "representation": "r1",
+    "low": 1,
+    "high": 4,
+    "tests": {
+      "a0 leakage": {
+        "quantity": "balanced accuracy(a0, C4) - balanced accuracy(a0, C1)",
+        "low": 0.3611111111111111,
+        "high": 0.3055555555555555,
+        "value": -0.05555555555555558,
+        "ci_lo": -0.22222222222222224,
+        "ci_hi": 0.08402777777777792,
+        "p": 0.7,
+        "holm": {
+          "p": 0.7,
+          "p_holm": 0.7,
+          "reject": false
+        }
+      },
+      "a2 adaptive rho": {
+        "quantity": "rho_adaptive(a2, C4) - rho_adaptive(a2, C1)",
+        "low": NaN,
+        "high": NaN,
+        "value": NaN,
+        "ci_lo": NaN,
+        "ci_hi": NaN,
+        "p": NaN,
+        "holm": {
+          "p": NaN,
+          "p_holm": NaN,
+          "reject": false
+        }
+      },
+      "a3 adaptive rho": {
+        "quantity": "rho_adaptive(a3, C4) - rho_adaptive(a3, C1)",
+        "low": NaN,
+        "high": NaN,
+        "value": NaN,
+        "ci_lo": NaN,
+        "ci_hi": NaN,
+        "p": NaN,
+        "holm": {
+          "p": NaN,
+          "p_holm": NaN,
+          "reject": false
+        }
+      }
+    }
+  },
+  "per_level": {
+    "1": {
+      "a0/static": {
+        "condition": "a0",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a0",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3611111111111111,
+          "ci_lo": 0.13888888888888887,
+          "ci_hi": 0.611111111111111,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a0/si4/static": {
+        "condition": "a0/si4",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a0/si4",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3611111111111111,
+          "ci_lo": 0.3333333333333333,
+          "ci_hi": 0.4166666666666667,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a0/si4/adaptive": {
+        "condition": "a0/si4",
+        "setting": "adaptive",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a0/si4",
+          "setting": "adaptive",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3611111111111111,
+          "ci_lo": 0.19444444444444442,
+          "ci_hi": 0.5284722222222223,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a2/static": {
+        "condition": "a2",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a2",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3611111111111111,
+          "ci_lo": 0.22222222222222224,
+          "ci_hi": 0.47222222222222215,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a2/adaptive": {
+        "condition": "a2",
+        "setting": "adaptive",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a2",
+          "setting": "adaptive",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3055555555555556,
+          "ci_lo": 0.16666666666666666,
+          "ci_hi": 0.4451388888888891,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a2/si4/static": {
+        "condition": "a2/si4",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a2/si4",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3333333333333333,
+          "ci_lo": 0.25,
+          "ci_hi": 0.4166666666666667,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a2/si4/adaptive": {
+        "condition": "a2/si4",
+        "setting": "adaptive",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a2/si4",
+          "setting": "adaptive",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3611111111111111,
+          "ci_lo": 0.22152777777777788,
+          "ci_hi": 0.5277777777777778,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a3/static": {
+        "condition": "a3",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a3",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3333333333333333,
+          "ci_lo": 0.3333333333333333,
+          "ci_hi": 0.3333333333333333,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a3/adaptive": {
+        "condition": "a3",
+        "setting": "adaptive",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 1,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a3",
+          "setting": "adaptive",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.2222222222222222,
+          "ci_lo": 0.05555555555555555,
+          "ci_hi": 0.3611111111111111,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      }
+    },
+    "4": {
+      "a0/static": {
+        "condition": "a0",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a0",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3055555555555555,
+          "ci_lo": 0.13888888888888887,
+          "ci_hi": 0.4729166666666669,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a0/si4/static": {
+        "condition": "a0/si4",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a0/si4",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3333333333333333,
+          "ci_lo": 0.3333333333333333,
+          "ci_hi": 0.3333333333333333,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a0/si4/adaptive": {
+        "condition": "a0/si4",
+        "setting": "adaptive",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a0/si4",
+          "setting": "adaptive",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.27777777777777773,
+          "ci_lo": 0.13888888888888887,
+          "ci_hi": 0.4451388888888891,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a2/static": {
+        "condition": "a2",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a2",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3055555555555555,
+          "ci_lo": 0.16666666666666666,
+          "ci_hi": 0.4166666666666667,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a2/adaptive": {
+        "condition": "a2",
+        "setting": "adaptive",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a2",
+          "setting": "adaptive",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.25,
+          "ci_lo": 0.1111111111111111,
+          "ci_hi": 0.3895833333333335,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a2/si4/static": {
+        "condition": "a2/si4",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a2/si4",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3333333333333333,
+          "ci_lo": 0.19375000000000012,
+          "ci_hi": 0.4444444444444444,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a2/si4/adaptive": {
+        "condition": "a2/si4",
+        "setting": "adaptive",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a2/si4",
+          "setting": "adaptive",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.22222222222222224,
+          "ci_lo": 0.05555555555555555,
+          "ci_hi": 0.3895833333333335,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a3/static": {
+        "condition": "a3",
+        "setting": "static",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a3",
+          "setting": "static",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.3333333333333333,
+          "ci_lo": 0.3333333333333333,
+          "ci_hi": 0.3333333333333333,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      },
+      "a3/adaptive": {
+        "condition": "a3",
+        "setting": "adaptive",
+        "balanced_accuracy": {
+          "experiment_id": "e2-e2e",
+          "regime": "NAT",
+          "concurrency": 4,
+          "task": "t1",
+          "representation": "r1",
+          "arm": "a3",
+          "setting": "adaptive",
+          "model": "lr",
+          "metric": "balanced_accuracy",
+          "value": 0.16666666666666666,
+          "ci_lo": 0.05486111111111122,
+          "ci_hi": 0.3055555555555556,
+          "n": 36,
+          "n_families": 34,
+          "B": 200
+        },
+        "rho": {
+          "value": NaN,
+          "ci_lo": NaN,
+          "ci_hi": NaN
+        }
+      }
+    }
+  },
+  "aggregation": {
+    "C1: a0/si4 vs a2": {
+      "value": 0.055555555555555525,
+      "ci_lo": -0.19444444444444448,
+      "ci_hi": 0.2777777777777778,
+      "p": 0.86
+    },
+    "C1: a2/si4 vs a2": {
+      "value": 0.055555555555555525,
+      "ci_lo": -0.13958333333333328,
+      "ci_hi": 0.2777777777777778,
+      "p": 0.79
+    },
+    "C4: a0/si4 vs a2": {
+      "value": 0.027777777777777735,
+      "ci_lo": -0.16666666666666663,
+      "ci_hi": 0.2506944444444446,
+      "p": 0.97
+    },
+    "C4: a2/si4 vs a2": {
+      "value": -0.027777777777777762,
+      "ci_lo": -0.3055555555555555,
+      "ci_hi": 0.22291666666666685,
+      "p": 0.86
+    }
+  },
+  "costs": {
+    "1": {
+      "a0": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 10.44665,
+          "p95": 22.589624999999998,
+          "p99": 43.99508999999996
+        },
+        "itl_ms": {
+          "p50": 2.0090500000000002,
+          "p95": 6.22935,
+          "p99": 11.712219999999972
+        },
+        "duration_ms": {
+          "p50": 66.59965,
+          "p95": 166.307425,
+          "p99": 212.63121499999997
+        },
+        "timer_lateness_ms": null,
+        "wire_bytes_mean": 10396.0,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0
+      },
+      "a0/si4": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 10.76175,
+          "p95": 30.240074999999997,
+          "p99": 61.722954999999935
+        },
+        "itl_ms": {
+          "p50": 41.7809,
+          "p95": 53.918094999999994,
+          "p99": 64.86549600000001
+        },
+        "duration_ms": {
+          "p50": 271.99375,
+          "p95": 332.26457500000004,
+          "p99": 359.470485
+        },
+        "timer_lateness_ms": null,
+        "wire_bytes_mean": 6454.055555555556,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": -37.91789577187807,
+          "ci_lo": -39.17353944951517,
+          "ci_hi": -36.723839840521755
+        },
+        "ttft_p50_delta_ms": {
+          "value": 0.8299000000000003,
+          "ci_lo": -2.4650700000000003,
+          "ci_hi": 2.2348850000000002
+        }
+      },
+      "a2": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 11.58775,
+          "p95": 24.3884,
+          "p99": 39.98894499999997
+        },
+        "itl_ms": {
+          "p50": 15.5262,
+          "p95": 29.35682,
+          "p99": 33.33780999999999
+        },
+        "duration_ms": {
+          "p50": 183.87234999999998,
+          "p95": 230.23865,
+          "p99": 249.277595
+        },
+        "timer_lateness_ms": {
+          "p50": 6.1695,
+          "p95": 14.960119999999998,
+          "p99": 18.322857999999922
+        },
+        "wire_bytes_mean": 6896.388888888889,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": -33.66305416613228,
+          "ci_lo": -35.179001975263425,
+          "ci_hi": -32.12702200461867
+        },
+        "ttft_p50_delta_ms": {
+          "value": 1.7057000000000002,
+          "ci_lo": -2.6772525000000003,
+          "ci_hi": 2.9892674999999995
+        }
+      },
+      "a2/si4": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 9.7058,
+          "p95": 17.236800000000002,
+          "p99": 25.906214999999982
+        },
+        "itl_ms": {
+          "p50": 39.7504,
+          "p95": 51.16632,
+          "p99": 63.61668000000001
+        },
+        "duration_ms": {
+          "p50": 265.0114,
+          "p95": 341.2016,
+          "p99": 379.55456499999997
+        },
+        "timer_lateness_ms": {
+          "p50": 7.6212,
+          "p95": 15.1735,
+          "p99": 16.845509999999997
+        },
+        "wire_bytes_mean": 6433.027777777777,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": -38.1201637381899,
+          "ci_lo": -39.597337854321616,
+          "ci_hi": -36.82244766460837
+        },
+        "ttft_p50_delta_ms": {
+          "value": -0.2721999999999998,
+          "ci_lo": -3.2507499999999987,
+          "ci_hi": 1.1295000000000002
+        }
+      },
+      "a3": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 27.2571,
+          "p95": 40.701225,
+          "p99": 60.92595999999996
+        },
+        "itl_ms": {
+          "p50": 5.2611,
+          "p95": 18.569479999999995,
+          "p99": 24.168721999999985
+        },
+        "duration_ms": {
+          "p50": 149.51845,
+          "p95": 238.39520000000002,
+          "p99": 267.09703
+        },
+        "timer_lateness_ms": {
+          "p50": 3.2233,
+          "p95": 12.337009999999992,
+          "p99": 30.803037000000113
+        },
+        "wire_bytes_mean": 18970.777777777777,
+        "pad_bytes_mean": 11003.75,
+        "dummies_mean": 10.027777777777779,
+        "bandwidth_overhead_pct": {
+          "value": 82.48150998247188,
+          "ci_lo": 72.47118751442731,
+          "ci_hi": 94.8679965151027
+        },
+        "ttft_p50_delta_ms": {
+          "value": 17.176099999999998,
+          "ci_lo": 14.020315000000002,
+          "ci_hi": 19.719642500000003
+        }
+      }
+    },
+    "4": {
+      "a0": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 38.31635,
+          "p95": 90.516425,
+          "p99": 186.8551199999998
+        },
+        "itl_ms": {
+          "p50": 6.5049,
+          "p95": 15.597375,
+          "p99": 31.6494249999999
+        },
+        "duration_ms": {
+          "p50": 218.0995,
+          "p95": 404.16335,
+          "p99": 544.9739749999999
+        },
+        "timer_lateness_ms": null,
+        "wire_bytes_mean": 10396.083333333334,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0
+      },
+      "a0/si4": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 43.2101,
+          "p95": 91.7165,
+          "p99": 150.93789499999994
+        },
+        "itl_ms": {
+          "p50": 22.307000000000002,
+          "p95": 42.618109999999994,
+          "p99": 71.46350000000001
+        },
+        "duration_ms": {
+          "p50": 188.13025,
+          "p95": 374.449275,
+          "p99": 532.0662499999999
+        },
+        "timer_lateness_ms": null,
+        "wire_bytes_mean": 6453.583333333333,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": -37.922935720984675,
+          "ci_lo": -39.18225758398738,
+          "ci_hi": -36.72547892290007
+        },
+        "ttft_p50_delta_ms": {
+          "value": 4.892399999999995,
+          "ci_lo": -6.692757499999996,
+          "ci_hi": 11.675700000000006
+        }
+      },
+      "a2": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 37.75485,
+          "p95": 74.735925,
+          "p99": 192.35491499999978
+        },
+        "itl_ms": {
+          "p50": 15.9386,
+          "p95": 31.383459999999946,
+          "p99": 51.68724799999996
+        },
+        "duration_ms": {
+          "p50": 204.79045000000002,
+          "p95": 410.18050000000005,
+          "p99": 546.7784749999998
+        },
+        "timer_lateness_ms": {
+          "p50": 3.1361,
+          "p95": 11.7693,
+          "p99": 18.28215
+        },
+        "wire_bytes_mean": 6997.472222222223,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": -32.691264605527195,
+          "ci_lo": -34.581089106833154,
+          "ci_hi": -31.090189070432718
+        },
+        "ttft_p50_delta_ms": {
+          "value": -1.745200000000004,
+          "ci_lo": -10.905164999999993,
+          "ci_hi": 9.420495000000006
+        }
+      },
+      "a2/si4": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 41.138549999999995,
+          "p95": 71.36432500000001,
+          "p99": 110.10366499999992
+        },
+        "itl_ms": {
+          "p50": 25.96875,
+          "p95": 50.70925,
+          "p99": 79.9759149999999
+        },
+        "duration_ms": {
+          "p50": 201.59185,
+          "p95": 322.97685,
+          "p99": 328.414125
+        },
+        "timer_lateness_ms": {
+          "p50": 3.9326499999999998,
+          "p95": 12.220139999999997,
+          "p99": 29.962013999999996
+        },
+        "wire_bytes_mean": 6274.777777777777,
+        "pad_bytes_mean": 0.0,
+        "dummies_mean": 0.0,
+        "bandwidth_overhead_pct": {
+          "value": -39.64286763978957,
+          "ci_lo": -41.350533159963284,
+          "ci_hi": -37.98911823344255
+        },
+        "ttft_p50_delta_ms": {
+          "value": 2.4358999999999966,
+          "ci_lo": -7.0259,
+          "ci_hi": 7.0815674999999985
+        }
+      },
+      "a3": {
+        "n": 36,
+        "ttft_ms": {
+          "p50": 50.91945,
+          "p95": 88.62004999999999,
+          "p99": 160.64780999999988
+        },
+        "itl_ms": {
+          "p50": 6.89195,
+          "p95": 16.595944999999997,
+          "p99": 31.47230799999968
+        },
+        "duration_ms": {
+          "p50": 242.82135,
+          "p95": 358.21335,
+          "p99": 486.4210049999997
+        },
+        "timer_lateness_ms": {
+          "p50": 3.6665,
+          "p95": 13.907644999999988,
+          "p99": 31.318684000000008
+        },
+        "wire_bytes_mean": 26743.444444444445,
+        "pad_bytes_mean": 16580.944444444445,
+        "dummies_mean": 16.0,
+        "bandwidth_overhead_pct": {
+          "value": 157.2453835445507,
+          "ci_lo": 141.2269130226793,
+          "ci_hi": 178.5644615266992
+        },
+        "ttft_p50_delta_ms": {
+          "value": 12.4694,
+          "ci_lo": 3.165300000000002,
+          "ci_hi": 19.359765000000007
+        }
+      }
+    }
+  },
+  "probes": [
+    {
+      "session_id": "01M4QMQ5H6T34P9YRGWHY51ZQG",
+      "cblock": 0,
+      "concurrency": 1,
+      "probes": 4,
+      "resp_count_median": 24.0,
+      "duration_ms_median": 53.1463623046875,
+      "ttft_ms_median": 5.9617919921875
+    },
+    {
+      "session_id": "01M4QMQ5H6T34P9YRGWHY51ZQG",
+      "cblock": 1,
+      "concurrency": 4,
+      "probes": 5,
+      "resp_count_median": 25.0,
+      "duration_ms_median": 116.822021484375,
+      "ttft_ms_median": 27.631591796875
+    },
+    {
+      "session_id": "01M4QMQ5H6T34P9YRGWHY51ZQG",
+      "cblock": 2,
+      "concurrency": 1,
+      "probes": 4,
+      "resp_count_median": 23.0,
+      "duration_ms_median": 46.4945068359375,
+      "ttft_ms_median": 13.5728759765625
+    },
+    {
+      "session_id": "01M4QMQ5H6T34P9YRGWHY51ZQG",
+      "cblock": 3,
+      "concurrency": 4,
+      "probes": 5,
+      "resp_count_median": 25.0,
+      "duration_ms_median": 148.33056640625,
+      "ttft_ms_median": 19.842041015625
+    },
+    {
+      "session_id": "01M4QMR1JGVX0EPHD74KAQP6A0",
+      "cblock": 0,
+      "concurrency": 1,
+      "probes": 4,
+      "resp_count_median": 23.0,
+      "duration_ms_median": 41.238525390625,
+      "ttft_ms_median": 10.2249755859375
+    },
+    {
+      "session_id": "01M4QMR1JGVX0EPHD74KAQP6A0",
+      "cblock": 1,
+      "concurrency": 4,
+      "probes": 5,
+      "resp_count_median": 23.0,
+      "duration_ms_median": 119.077392578125,
+      "ttft_ms_median": 25.912841796875
+    },
+    {
+      "session_id": "01M4QMR1JGVX0EPHD74KAQP6A0",
+      "cblock": 2,
+      "concurrency": 1,
+      "probes": 4,
+      "resp_count_median": 25.0,
+      "duration_ms_median": 41.4273681640625,
+      "ttft_ms_median": 8.321533203125
+    },
+    {
+      "session_id": "01M4QMR1JGVX0EPHD74KAQP6A0",
+      "cblock": 3,
+      "concurrency": 4,
+      "probes": 5,
+      "resp_count_median": 23.0,
+      "duration_ms_median": 128.934326171875,
+      "ttft_ms_median": 21.80712890625
+    }
+  ],
+  "feature_schema_version": "1"
+}

@@ -5,9 +5,12 @@ import platform
 import socket
 import ssl
 import statistics
+import subprocess
+import sys
 import tempfile
 import time
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 
 import h11
@@ -570,6 +573,18 @@ async def main(duration: float, output: Path, soak_seconds: float) -> None:
             }
     result = {
         "environment": {
+            "measured_at": datetime.now(UTC).isoformat(),
+            "command": sys.argv,
+            "kernel": platform.release(),
+            "event_loop": type(asyncio.get_running_loop()).__module__,
+            "git_commit": subprocess.run(
+                ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+            ).stdout.strip(),
+            "git_dirty": bool(
+                subprocess.run(
+                    ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+                ).stdout.strip()
+            ),
             "system": platform.system(),
             "python": platform.python_version(),
             "openssl": ssl.OPENSSL_VERSION,

@@ -3,6 +3,47 @@
 These files are evidence from an actual local stack, not cloud-deployment
 screenshots and not scientific E0–E2 results.
 
+## Retained E0/E1/E2 campaign
+
+The report is assembled in [`../PROJECT_REPORT.md`](../PROJECT_REPORT.md).
+`campaign/` contains generated reports, JSON summaries, figures, exact configs,
+and ten actual UI screenshots. Desktop captures use 1504×1128 and the mobile
+capture uses 390×844. Every screenshot was captured against the running API and
+PostgreSQL/Parquet stores, with no intercepted browser responses.
+
+Executed command:
+
+`uv run pytest -q tests/test_e2e_e0.py tests/test_e2e_e1.py tests/test_e2e_e2.py
+--basetemp=artifacts/report-campaign-20261012`
+
+Result: 4 passed in 348.64 s; six sessions, 859 completed requests, zero failed
+requests, and 552 evaluation rows. `campaign/campaign.json` records session IDs,
+artifact hashes, import time, and measured classifier results. The reports
+preserve the source commit and dirty-tree state recorded during collection.
+
+The upstream was synthetic SSE. The recorder captured actual TLS ciphertext
+and generated synthetic TCP segmentation. All sessions remain `PARTIAL` and all
+reports are marked `NOT REPORTABLE`; these artifacts demonstrate engineering
+execution and do not establish research conclusions on production LLM traffic.
+
+Browser verification with `CT_E2E_OPERATOR_TOKEN` and `CT_E2E_EXPERIMENT_ID`
+configured: `pnpm test:e2e` — 6 passed. Three tests use fixtures; three use the
+real local stack, including campaign rendering and durable API mutations.
+The campaign test also verifies operator access to oracle emissions is denied
+with HTTP 403, and actual recorded packet and TLS trace rendering.
+
+Final Windows verification: `uv run pytest -q` — **184 passed in 282.67 s**;
+`pnpm test` — **10 passed**; `pnpm lint`, `pnpm typecheck`, and `pnpm build`
+passed. `uv run ruff check .`, `uv run ruff format --check .`, and `uv run pyright`
+passed; `uv run lint-imports` kept all seven architecture contracts.
+
+`gcp-audit.json` contains actual authenticated read-only Google Cloud outputs.
+It proves billing was disabled. The Compute listing contains a billing-required
+warning; its empty list is not a complete VM inventory. The listed historical
+`billing-killswitch` service is not CrossTalk. No cloud application was deployed
+or tested. Browser discovery returned no available surfaces, so Google Cloud
+console screenshots could not be captured.
+
 - `local-stack-desktop.png`: Chromium at 1504×1128 showing the Vite console
   populated through its `/v1` proxy from FastAPI and the isolated PostgreSQL 18
   database. The experiment has two real session rows and two queued plan jobs.
