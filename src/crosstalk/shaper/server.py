@@ -40,6 +40,14 @@ class ShaperSettings(BaseSettings):
     write_high_water: int = Field(default=65_536, ge=16_384, le=1_048_576)
     policy_file: Path | None = None
     default_arm: str = "a0"
+    # aiohttp's default pool holds 100 connections, and its ``connect`` timeout also bounds
+    # the wait for a free slot; one shaper must relay more concurrent streams than that.
+    upstream_connections: int = Field(default=1024, ge=1)
+    upstream_connect_timeout: float = Field(default=5.0, gt=0)
+    upstream_first_byte_timeout: float = Field(default=120.0, gt=0)
+    # SO_REUSEPORT scale-out (IMPLEMENTATION_PLAN §3.2): several shaper processes share one
+    # listening port, each with its own admin port and emission log. Linux only.
+    reuse_port: bool = False
 
 
 def load_policies(settings: ShaperSettings) -> dict[str, PolicyConfig]:
@@ -72,6 +80,27 @@ class ShaperMetrics:
         self.peak_write_buffer_bytes = max(
             self.peak_write_buffer_bytes, writer.transport.get_write_buffer_size()
         )
+
+
+def upstream_timeout(settings: ShaperSettings) -> aiohttp.ClientTimeout:
+    """TCP connect and response-head deadlines; body idle time is the emitter's job.
+
+    ``sock_read`` bounds every socket read, so it is the loose first-byte deadline; the
+    emitter enforces the tighter per-event idle timeout on the body.
+    """
+    return aiohttp.ClientTimeout(
+        total=None,
+        connect=None,
+        sock_connect=settings.upstream_connect_timeout,
+        sock_read=settings.upstream_first_byte_timeout,
+    )
+
+
+def upstream_session(settings: ShaperSettings) -> aiohttp.ClientSession:
+    connector = aiohttp.TCPConnector(
+        limit=settings.upstream_connections, limit_per_host=settings.upstream_connections
+    )
+    return aiohttp.ClientSession(connector=connector)
 
 
 def tls_context(settings: ShaperSettings) -> ssl.SSLContext:
@@ -144,7 +173,7 @@ async def handle_connection(
         if arm not in policies:
             raise ConfigError(f"Unknown arm: {arm}")
         policy = build_policy(policies[arm])
-        timeout = aiohttp.ClientTimeout(total=None, connect=5)
+        timeout = upstream_timeout(settings)
         async with upstream.post(
             settings.upstream_url.rstrip("/") + "/v1/chat/completions",
             data=body,
@@ -276,7 +305,7 @@ async def run(settings: ShaperSettings, metrics: ShaperMetrics | None = None) ->
     shutdown = asyncio.Event()
     async with (
         EmissionWriter(settings.oracle_dir / f"{new_ulid()}.ndjson") as emissions,
-        aiohttp.ClientSession() as upstream,
+        upstream_session(settings) as upstream,
     ):
 
         async def serve(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -319,7 +348,12 @@ async def run(settings: ShaperSettings, metrics: ShaperMetrics | None = None) ->
             writer.close()
 
         server = await asyncio.start_server(
-            serve, settings.host, settings.port, ssl=context, backlog=4096
+            serve,
+            settings.host,
+            settings.port,
+            ssl=context,
+            backlog=4096,
+            reuse_port=settings.reuse_port or None,
         )
         admin_server = await asyncio.start_server(admin, settings.admin_host, settings.admin_port)
         loop = asyncio.get_running_loop()
