@@ -90,3 +90,15 @@ Limitations: the queued jobs prove the control plane, not worker execution.
 Windows cannot qualify the Linux/uvloop capture runtime gate. No GCP service,
 public backend URL, GPU, packet capture, or reportable leakage result is claimed.
 
+
+## Runtime gate, harness v2 — 2026-10-12
+
+`runtime-linux-v2-20261012.json` (gates) and `runtime-linux-v2-soak-20261012.json`
+(30-minute soak) are actual WSL2/uvloop measurements. The shaper, mock upstream,
+timer server and clients run in separate processes, and lateness uses
+`time.monotonic_ns()`. The connection-pool fix removed all 156 relay errors at
+256 streams. G1, G2, G4 CPU/RSS, G5 buffer and abort, and G6 pass. **G3 relay
+latency (Δp99 +16.28 ms at N=64, +309.69 ms at N=256), the 30-minute soak RSS
+growth (+13.9%) and the G5 p99-change criterion (+3.20 ms) fail.** The analysis
+is in [`../../bench/RESULTS.md`](../../bench/RESULTS.md).
+`runtime-linux-20261012.json` (harness v1, single process) is retained unchanged.
