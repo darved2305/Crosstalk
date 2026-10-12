@@ -25,3 +25,33 @@ A later 0.4-second Windows invocation of the expanded harness wrote `artifacts/b
 ## Pending host validation
 
 Run the harness at its 20-second default in Linux with uvloop and three repetitions, then run `--soak-seconds 1800` for the continuous 64-stream resource check. The Linux relay and backpressure measurements remain pending. Docker Desktop briefly ran a diagnostic mock capture on 2026-09-30, but became unresponsive during a later container recreate. The diagnostic capture is described in `docs/experiments/encrypted-traffic-validation.md`; it does not establish capture throughput or full-session completeness.
+
+## Bounded Windows probe, 2026-10-12
+
+Command: `uv run python bench/runtime/run.py --duration 0.4 --output
+artifacts/bench/runtime-windows-20261012.json`.
+
+Environment: Windows, CPython 3.13.12, OpenSSL 3.5.5. The run used the real TLS
+shaper and the repository's explicitly synthetic mock upstream. The raw ignored
+artifact SHA-256 is
+`d8885739e1c76c6fb6931c42cde5b1400acbc225cd5e5c8afb765121a5ffea13`.
+
+| Measurement | Median repetition result |
+|---|---:|
+| Spaced TLS record sequence | exact in 3/3; 53 emissions each |
+| Back-to-back TLS record sequence | exact in 3/3; 53 emissions each |
+| Delayed-reader TLS record sequence | exact in 3/3; 53 emissions each |
+| Randomized SSE chunking | 1,000 cases; 0 mismatches |
+| Timer p99, 1 stream | 14.39 ms |
+| Timer p99, 64 streams | 26.09 ms |
+| Timer p99, 256 streams | 974.78 ms |
+| 256-stream CPU / ending RSS | 0.917 core / 154.35 MB |
+| Slow-reader write-buffer peak / cap | 534,039 / 1,048,576 bytes |
+| Slow reader aborted at two-second timeout | yes, 3/3 repetitions |
+| Normal-client errors with slow reader | 0, 3/3 repetitions |
+
+This is a measured development probe, not a passing research gate. Its 0.4 s
+duration, Windows event loop, synthetic upstream, missing Linux relay run, and
+missing 30-minute soak make it ineligible for the Linux/uvloop decision in
+`IMPLEMENTATION_PLAN.md` §3.2. The poor 256-stream timer result is reported as
+observed; it is not hidden or generalized to the target Linux runtime.

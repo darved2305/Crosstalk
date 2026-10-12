@@ -58,3 +58,18 @@ accepts `cost=cpu`, so the CPU plot explicitly says no CPU cost data is exposed.
   not run here. The recording mentioned in the UI request was not present as a
   local file; visual inspection used the four identical cropped stills shown
   in the conversation and Playwright screenshots.
+
+## Live local-stack verification on 2026-10-12
+
+The console was subsequently exercised without Docker against FastAPI and an
+isolated native PostgreSQL 18 cluster. This found and fixed two fixture-hidden
+contract defects: persistence-only columns caused strict response validation
+failures, and the console rejected valid numeric-offset timestamps emitted by
+FastAPI. The opt-in real-stack Playwright test now checks readiness,
+unauthorized access, authenticated experiment/session/job data, and desktop and
+mobile rendering. See [`runbooks/windows-zero-cost-demo.md`](runbooks/windows-zero-cost-demo.md)
+for reproduction and [`evidence/README.md`](evidence/README.md) for provenance.
+
+This verification stops at queued plan jobs. Production worker stage adapters,
+Linux capture, GPU inference, and reportable E0–E2 collection remain pending;
+the UI does not synthesize those results.
