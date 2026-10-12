@@ -87,6 +87,9 @@ export function Results() {
       >
         {query.data && (
           <>
+            {query.data.reportable !== true && (
+              <div className="notice" role="status">{query.data.warning ?? "Reportability has not been verified."}</div>
+            )}
             <div className="filterPanel evidenceFilters">
               <label>
                 Regime
@@ -141,7 +144,7 @@ export function Results() {
                       <tr key={i}>
                         <td>
                           {r.regime}
-                          <small>C{r.concurrency}</small>
+                          <small>{r.concurrency === null ? "Session aggregate" : `C${r.concurrency}`}</small>
                         </td>
                         <td>
                           <span className="policyTag">{r.arm}</span>
@@ -256,6 +259,9 @@ export function Frontier() {
       <State loading={query.isLoading} error={query.error}>
         {query.data && (
           <div className="chartPanel">
+            {query.data.reportable !== true && (
+              <div className="notice" role="status">{query.data.warning ?? "Reportability has not been verified."}</div>
+            )}
             <FrontierPlot data={query.data} />
             <div className="chartFoot">
               {query.data.rows.length} result rows · {query.data.setting}{" "}
@@ -426,6 +432,9 @@ export function Traces() {
       <State loading={trace.isLoading} error={trace.error}>
         {trace.data && (
           <>
+            {trace.data.reportable !== true && (
+              <div className="notice" role="status">{trace.data.warning ?? "Session provenance has not been verified."}</div>
+            )}
             <div className="traceStats">
               <span>
                 <strong>{trace.data.source_points.toLocaleString()}</strong>{" "}
@@ -507,7 +516,7 @@ export function Traces() {
                       {emissions.data.rows.map((row) => (
                         <tr key={row.seq}>
                           <td>{row.seq}</td>
-                          <td>{row.t_emit_ns}</td>
+                          <td>{row.t_emit_ns.toString()}</td>
                           <td>{row.kind}</td>
                           <td>{row.framed_len}</td>
                           <td>{row.content_bytes}</td>

@@ -1,9 +1,12 @@
+import json
 import math
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, TypedDict, cast
 
 import duckdb
+
+from crosstalk.contracts.manifest import RunManifest
 
 
 class ResultNotFoundError(Exception):
@@ -14,7 +17,13 @@ class ResultDataError(Exception):
     pass
 
 
+class ResultProvenance(TypedDict):
+    reportable: bool | None
+    warning: str
+
+
 class ResultStore(Protocol):
+    def provenance(self, experiment_id: str, experiment_name: str) -> ResultProvenance: ...
     def evaluations(
         self, experiment_id: str, experiment_name: str | None = None
     ) -> list[Mapping[str, object]]: ...
@@ -31,6 +40,31 @@ class ResultStore(Protocol):
 class DuckDBResultStore:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+
+    def provenance(self, experiment_id: str, experiment_name: str) -> ResultProvenance:
+        try:
+            path = self._experiment_file(experiment_id, experiment_name, "summary.json")
+        except ResultNotFoundError:
+            return {"reportable": None, "warning": "Reportability has not been verified."}
+        try:
+            summary = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError) as error:
+            raise ResultDataError("Unable to read experiment provenance") from error
+        if not isinstance(summary, dict):
+            raise ResultDataError("Experiment summary must be an object")
+        reportable = cast(dict[str, object], summary).get("reportable")
+        if not isinstance(reportable, bool):
+            raise ResultDataError("Experiment summary is missing boolean reportability")
+        return {
+            "reportable": reportable,
+            "warning": "Validated experiment artifact."
+            if reportable
+            else (
+                "NOT REPORTABLE: development measurements from unvalidated sessions. "
+                "A mock upstream or synthetic packet segmentation may be present; "
+                "consult the report and session manifests before interpreting results."
+            ),
+        }
 
     def evaluations(
         self, experiment_id: str, experiment_name: str | None = None
@@ -59,6 +93,29 @@ class DuckDBResultStore:
         if not 100 <= limit <= 20_000:
             raise ValueError("trace limit must lie in [100, 20000]")
         observer = self._directory("sessions", session_id, "observer")
+        provenance: ResultProvenance = {
+            "reportable": None,
+            "warning": "Session provenance has not been verified.",
+        }
+        manifest_path = observer.parent / "manifest.json"
+        if manifest_path.is_file():
+            try:
+                manifest = RunManifest.model_validate_json(manifest_path.read_text("utf-8"))
+            except (ValueError, OSError) as error:
+                raise ResultDataError("Unable to read session provenance") from error
+            issues = manifest.reportability_issues()
+            relay = manifest.environment.get("capture_interface") == "recording-relay"
+            provenance = {
+                "reportable": not issues and not relay,
+                "warning": (
+                    "NOT REPORTABLE: recorded TLS ciphertext with synthetic TCP packet segmentation; "
+                    "mock upstream development run."
+                    if relay
+                    else "NOT REPORTABLE: " + "; ".join(issues)
+                    if issues
+                    else "Validated session manifest."
+                ),
+            }
         flow_map = self._existing(observer / "flow_map.parquet")
         table = self._existing(observer / f"{layer}.parquet")
         if layer == "records":
@@ -103,6 +160,7 @@ class DuckDBResultStore:
         except duckdb.Error as error:
             raise ResultDataError(f"Unable to query trace data: {error}") from error
         return {
+            **provenance,
             "session_id": session_id,
             "request_id": request_id,
             "layer": layer,

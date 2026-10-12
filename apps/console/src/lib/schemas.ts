@@ -45,12 +45,14 @@ export const experimentDetail = experimentSummary.extend({
 
 export const evaluationResults = z.object({
   experiment_id: ulid,
+  reportable: z.boolean().nullable().optional(),
+  warning: z.string().optional(),
   rows: z.array(
     z.object({
       session_id: ulid.nullable(),
       experiment_id: ulid,
       regime: z.string(),
-      concurrency: z.number().int(),
+      concurrency: z.number().int().nullable(),
       task: z.string(),
       representation: z.string(),
       arm: z.string(),
@@ -69,6 +71,8 @@ export const evaluationResults = z.object({
 
 export const frontierResults = z.object({
   experiment_id: ulid,
+  reportable: z.boolean().nullable().optional(),
+  warning: z.string().optional(),
   setting: z.enum(["static", "adaptive"]),
   cost: z.string(),
   rows: z.array(
@@ -91,15 +95,20 @@ export const frontierResults = z.object({
   ),
 });
 
+const nanoseconds = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()])
+  .transform((value) => BigInt(value));
+
 const tracePoint = z.object({
-  t_start_ns: z.number().int(),
-  t_end_ns: z.number().int(),
+  t_start_ns: nanoseconds,
+  t_end_ns: nanoseconds,
   min_value: z.number().int(),
   max_value: z.number().int(),
   count: z.number().int(),
 });
 
 export const traceResults = z.object({
+  reportable: z.boolean().nullable().optional(),
+  warning: z.string().optional(),
   session_id: ulid,
   request_id: ulid,
   layer: z.enum(["records", "packets"]),
@@ -116,7 +125,7 @@ export const emissionResults = z.object({
   rows: z.array(
     z.object({
       seq: z.number().int(),
-      t_emit_ns: z.number().int(),
+      t_emit_ns: nanoseconds,
       kind: z.string(),
       framed_len: z.number().int(),
       content_bytes: z.number().int(),

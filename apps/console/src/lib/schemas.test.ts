@@ -75,4 +75,15 @@ describe("API runtime contracts", () => {
   it("rejects malformed identifiers", () => {
     expect(() => traceResults.parse({ session_id: "../escape" })).toThrow();
   });
+
+  it("preserves nanosecond precision from actual epoch timestamps", () => {
+    const timestamp = "1791794233000000123";
+    const parsed = traceResults.parse({
+      session_id: id, request_id: id, layer: "records", source_points: 1,
+      downsampled: false,
+      points: [{t_start_ns: timestamp, t_end_ns: "1791794233000000124", min_value: 1, max_value: 2, count: 1}],
+    });
+    expect(parsed.points[0]?.t_start_ns.toString()).toBe(timestamp);
+    expect(parsed.points[0]!.t_end_ns - parsed.points[0]!.t_start_ns).toBe(1n);
+  });
 });

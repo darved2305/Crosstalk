@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from crosstalk.api.app import ApiSettings, create_app
 from crosstalk.api.results import DuckDBResultStore, ResultNotFoundError
+from crosstalk.api.schemas import EmissionRow, TracePoint
 from crosstalk.contracts.parquet import write_table
 from crosstalk.contracts.tables import schema_for
 from test_api import (
@@ -19,6 +21,22 @@ from test_api import (
 )
 
 REQUEST_ID = "01K00000000000000000000004"
+
+
+def test_trace_nanoseconds_are_serialized_losslessly() -> None:
+    timestamp = 1791794233000000123
+    point = TracePoint.model_validate(
+        {
+            "t_start_ns": timestamp,
+            "t_end_ns": timestamp + 1,
+            "min_value": 1,
+            "max_value": 2,
+            "count": 1,
+        }
+    )
+    assert point.model_dump()["t_start_ns"] == str(timestamp)
+    assert point.model_dump()["t_end_ns"] == str(timestamp + 1)
+    assert EmissionRow.lossless_nanoseconds(timestamp) == str(timestamp)
 
 
 def _write(root: Path, relative: str, table: str, rows: list[dict[str, object]]) -> None:
@@ -146,6 +164,31 @@ def test_result_and_frontier_queries(tmp_path: Path) -> None:
     assert results.status_code == frontier.status_code == 200
     assert results.json()["rows"][0]["metric"] == "balanced_accuracy"
     assert frontier.json()["rows"][0]["rho"] == pytest.approx(0.4)
+
+
+def test_named_development_results_keep_provenance_and_nullable_concurrency(tmp_path: Path) -> None:
+    store = result_fixture(tmp_path)
+    original = tmp_path / "experiments" / EXPERIMENT_ID
+    target = original.with_name("api-test")
+    original.rename(target)
+    (target / "summary.json").write_text(json.dumps({"reportable": False}), encoding="utf-8")
+    table_path = target / "evaluations" / "evaluations.parquet"
+    rows = pa.parquet.read_table(table_path).to_pylist()
+    rows[0]["experiment_id"] = "api-test"
+    rows[0]["concurrency"] = None
+    write_table(pa.Table.from_pylist(rows, schema=schema_for("evaluations")), table_path)
+    with TestClient(
+        create_app(
+            FakeControlStore(), ApiSettings(operator_token=TOKEN, oracle_token=ORACLE_TOKEN), store
+        )
+    ) as api:
+        response = api.get(f"/v1/experiments/{EXPERIMENT_ID}/results", headers=auth())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rows"][0]["experiment_id"] == EXPERIMENT_ID
+    assert body["rows"][0]["concurrency"] is None
+    assert body["reportable"] is False
+    assert "NOT REPORTABLE" in body["warning"]
 
 
 def test_trace_query_and_large_trace_downsampling(tmp_path: Path) -> None:

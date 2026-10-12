@@ -257,7 +257,7 @@
           },
           "t_emit_ns": {
             "title": "T Emit Ns",
-            "type": "integer"
+            "type": "string"
           },
           "timer_lateness_ns": {
             "title": "Timer Lateness Ns",
@@ -286,12 +286,28 @@
             "title": "Experiment Id",
             "type": "string"
           },
+          "reportable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportable"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/EvaluationRow"
             },
             "title": "Rows",
             "type": "array"
+          },
+          "warning": {
+            "default": "Reportability has not been verified.",
+            "title": "Warning",
+            "type": "string"
           }
         },
         "required": [
@@ -335,8 +351,15 @@
             "title": "Ci Lo"
           },
           "concurrency": {
-            "title": "Concurrency",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concurrency"
           },
           "experiment_id": {
             "title": "Experiment Id",
@@ -641,6 +664,17 @@
             "title": "Experiment Id",
             "type": "string"
           },
+          "reportable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportable"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/FrontierRow"
@@ -650,6 +684,11 @@
           },
           "setting": {
             "title": "Setting",
+            "type": "string"
+          },
+          "warning": {
+            "default": "Reportability has not been verified.",
+            "title": "Warning",
             "type": "string"
           }
         },
@@ -1174,11 +1213,11 @@
           },
           "t_end_ns": {
             "title": "T End Ns",
-            "type": "integer"
+            "type": "string"
           },
           "t_start_ns": {
             "title": "T Start Ns",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -1209,6 +1248,17 @@
             "title": "Points",
             "type": "array"
           },
+          "reportable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportable"
+          },
           "request_id": {
             "title": "Request Id",
             "type": "string"
@@ -1220,6 +1270,11 @@
           "source_points": {
             "title": "Source Points",
             "type": "integer"
+          },
+          "warning": {
+            "default": "Session provenance has not been verified.",
+            "title": "Warning",
+            "type": "string"
           }
         },
         "required": [

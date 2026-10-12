@@ -301,8 +301,9 @@ def create_app(
         experiment = control.get_experiment(experiment_id)
         return EvaluationResults(
             experiment_id=experiment_id,
+            **result_data.provenance(experiment_id, str(experiment["name"])),
             rows=[
-                EvaluationRow.model_validate(row)
+                EvaluationRow.model_validate({**row, "experiment_id": experiment_id})
                 for row in result_data.evaluations(experiment_id, str(experiment["name"]))
             ],
         )
@@ -330,10 +331,11 @@ def create_app(
         experiment = control.get_experiment(experiment_id)
         return FrontierResults(
             experiment_id=experiment_id,
+            **result_data.provenance(experiment_id, str(experiment["name"])),
             setting=setting,
             cost=cost,
             rows=[
-                FrontierRow.model_validate(row)
+                FrontierRow.model_validate({**row, "experiment_id": experiment_id})
                 for row in result_data.frontier(experiment_id, setting, str(experiment["name"]))
             ],
         )

@@ -348,7 +348,7 @@ export interface components {
             /** Seq */
             seq: number;
             /** T Emit Ns */
-            t_emit_ns: number;
+            t_emit_ns: string;
             /** Timer Lateness Ns */
             timer_lateness_ns: number;
         };
@@ -356,8 +356,15 @@ export interface components {
         EvaluationResults: {
             /** Experiment Id */
             experiment_id: string;
+            /** Reportable */
+            reportable?: boolean | null;
             /** Rows */
             rows: components["schemas"]["EvaluationRow"][];
+            /**
+             * Warning
+             * @default Reportability has not been verified.
+             */
+            warning: string;
         };
         /** EvaluationRow */
         EvaluationRow: {
@@ -370,7 +377,7 @@ export interface components {
             /** Ci Lo */
             ci_lo: number | null;
             /** Concurrency */
-            concurrency: number;
+            concurrency: number | null;
             /** Experiment Id */
             experiment_id: string;
             /** Metric */
@@ -481,10 +488,17 @@ export interface components {
             cost: string;
             /** Experiment Id */
             experiment_id: string;
+            /** Reportable */
+            reportable?: boolean | null;
             /** Rows */
             rows: components["schemas"]["FrontierRow"][];
             /** Setting */
             setting: string;
+            /**
+             * Warning
+             * @default Reportability has not been verified.
+             */
+            warning: string;
         };
         /** FrontierRow */
         FrontierRow: {
@@ -677,9 +691,9 @@ export interface components {
             /** Min Value */
             min_value: number;
             /** T End Ns */
-            t_end_ns: number;
+            t_end_ns: string;
             /** T Start Ns */
-            t_start_ns: number;
+            t_start_ns: string;
         };
         /** TraceResults */
         TraceResults: {
@@ -689,12 +703,19 @@ export interface components {
             layer: string;
             /** Points */
             points: components["schemas"]["TracePoint"][];
+            /** Reportable */
+            reportable?: boolean | null;
             /** Request Id */
             request_id: string;
             /** Session Id */
             session_id: string;
             /** Source Points */
             source_points: number;
+            /**
+             * Warning
+             * @default Session provenance has not been verified.
+             */
+            warning: string;
         };
         /** ValidationError */
         ValidationError: {

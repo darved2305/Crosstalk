@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from crosstalk.contracts.config import StrictModel
 
@@ -72,7 +72,7 @@ class EvaluationRow(StrictModel):
     session_id: str | None
     experiment_id: str
     regime: str
-    concurrency: int
+    concurrency: int | None
     task: str
     representation: str
     arm: str
@@ -90,6 +90,8 @@ class EvaluationRow(StrictModel):
 class EvaluationResults(StrictModel):
     experiment_id: str
     rows: list[EvaluationRow]
+    reportable: bool | None = None
+    warning: str = "Reportability has not been verified."
 
 
 class FrontierRow(StrictModel):
@@ -114,14 +116,23 @@ class FrontierResults(StrictModel):
     setting: str
     cost: str
     rows: list[FrontierRow]
+    reportable: bool | None = None
+    warning: str = "Reportability has not been verified."
 
 
 class TracePoint(StrictModel):
-    t_start_ns: int
-    t_end_ns: int
+    t_start_ns: str
+    t_end_ns: str
     min_value: int
     max_value: int
     count: int
+
+    @field_validator("t_start_ns", "t_end_ns", mode="before")
+    @classmethod
+    def lossless_nanoseconds(cls, value: object) -> str:
+        if isinstance(value, int) or (isinstance(value, str) and value.isdecimal()):
+            return str(value)
+        raise ValueError("nanosecond timestamps must be integer decimal values")
 
 
 class TraceResults(StrictModel):
@@ -131,11 +142,13 @@ class TraceResults(StrictModel):
     source_points: int
     downsampled: bool
     points: list[TracePoint]
+    reportable: bool | None = None
+    warning: str = "Session provenance has not been verified."
 
 
 class EmissionRow(StrictModel):
     seq: int
-    t_emit_ns: int
+    t_emit_ns: str
     kind: str
     framed_len: int
     content_bytes: int
@@ -144,6 +157,11 @@ class EmissionRow(StrictModel):
     queue_delay_ns: int
     timer_lateness_ns: int
     arm: str
+
+    @field_validator("t_emit_ns", mode="before")
+    @classmethod
+    def lossless_nanoseconds(cls, value: object) -> str:
+        return TracePoint.lossless_nanoseconds(value)
 
 
 class EmissionResults(StrictModel):
