@@ -222,7 +222,15 @@ def create_app(
         auth: Annotated[frozenset[str], Depends(scopes)],
     ) -> ExperimentCreated:
         del auth
-        return ExperimentCreated.model_validate(control.create_experiment(config))
+        row = control.create_experiment(config)
+        # A real SQL store returns the complete inserted row. Keep persistence-only
+        # columns behind the API boundary instead of leaking them into the strict
+        # response model (or turning a successful insert into a 500 response).
+        return ExperimentCreated(
+            id=str(row["id"]),
+            name=str(row["name"]),
+            config_hash=str(row["config_hash"]),
+        )
 
     @app.post("/v1/experiments/{experiment_id}/runs", response_model=RunCreated, status_code=202)
     def create_run(

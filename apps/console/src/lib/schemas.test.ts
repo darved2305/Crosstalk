@@ -25,6 +25,40 @@ describe("API runtime contracts", () => {
     expect(parsed.items[0]?.state).toBe("partial");
   });
 
+  it("accepts FastAPI timestamps with a numeric timezone offset", () => {
+    const parsed = experimentPage.parse({
+      items: [
+        {
+          id,
+          name: "postgres-row",
+          config_hash: "b".repeat(64),
+          state: "running",
+          created_at: "2026-10-12T13:28:11.842693+05:30",
+          updated_at: "2026-10-12T13:28:11+05:30",
+        },
+      ],
+      next_cursor: null,
+    });
+    expect(parsed.items[0]?.created_at).toContain("+05:30");
+  });
+
+  it("rejects malformed timestamps", () => {
+    expect(() =>
+      experimentPage.parse({
+        items: [
+          {
+            id,
+            name: "bad-time",
+            config_hash: "c".repeat(64),
+            state: "running",
+            created_at: "yesterday",
+            updated_at: "2026-10-12T13:28:11Z",
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
   it("validates real-shaped downsampled traces", () => {
     const parsed = traceResults.parse({
       session_id: id,

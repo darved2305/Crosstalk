@@ -272,7 +272,14 @@ class PostgresControlStore:
                 [JobState(item) for item in job_states],
             )
         )
-        return {**self._dict(row), "state": state}
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "config_hash": row["config_hash"],
+            "state": state,
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
 
     @staticmethod
     def _session(connection: Connection, row: RowMapping) -> Mapping[str, object]:
@@ -282,8 +289,22 @@ class PostgresControlStore:
             ).mappings()
         )
         return {
-            **PostgresControlStore._dict(row),
-            "jobs": [PostgresControlStore._dict(job) for job in job_rows],
+            "id": row["id"],
+            "experiment_id": row["experiment_id"],
+            "state": row["state"],
+            "cancel_requested": row["cancel_requested"],
+            "jobs": [
+                {
+                    "id": job["id"],
+                    "kind": job["kind"],
+                    "queue": job["queue"],
+                    "state": job["state"],
+                    "attempts": job["attempts"],
+                    "max_attempts": job["max_attempts"],
+                    "error": job["error"],
+                }
+                for job in job_rows
+            ],
         }
 
     @staticmethod

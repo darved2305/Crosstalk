@@ -25,8 +25,8 @@ export const experimentSummary = z.object({
   name: z.string(),
   config_hash: z.string().length(64),
   state: z.enum(["running", "completed", "partial", "failed", "cancelled"]),
-  created_at: z.iso.datetime(),
-  updated_at: z.iso.datetime(),
+  created_at: z.iso.datetime({ offset: true }),
+  updated_at: z.iso.datetime({ offset: true }),
 });
 
 export const experimentPage = z.object({

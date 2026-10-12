@@ -23,7 +23,16 @@ class FakeControlStore(ControlStore):
         return self.ready
 
     def create_experiment(self, config: ExperimentConfig) -> Mapping[str, object]:
-        return {"id": EXPERIMENT_ID, "name": config.name, "config_hash": config.sha256()}
+        now = datetime.now(UTC)
+        return {
+            "id": EXPERIMENT_ID,
+            "name": config.name,
+            "config_hash": config.sha256(),
+            "config": config.model_dump(mode="json"),
+            "cancel_requested": False,
+            "created_at": now,
+            "updated_at": now,
+        }
 
     def create_run(
         self, experiment_id: str, idempotency_key: str, code_commit: str
