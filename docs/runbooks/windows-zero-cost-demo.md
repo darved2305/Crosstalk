@@ -1,8 +1,12 @@
 # Zero-cost Windows demo
 
-This runbook starts the real React console, FastAPI service, and PostgreSQL
-control plane without Docker or cloud billing. It does **not** claim that the
-scientific worker DAG, Linux packet capture, or GPU serving is running.
+This runbook starts the real React console, FastAPI service, PostgreSQL
+control plane and production worker without Docker or cloud billing. Dashboard
+runs execute every stage (plan → collect → reconstruct → validate → analyze →
+report) in the worker's **local-dev lab**: a synthetic mock upstream, the
+production TLS shaper and a recording relay with synthetic TCP segmentation.
+Sessions therefore end `PARTIAL` and reports are `NOT REPORTABLE`. Linux packet
+capture, the tshark oracle and GPU serving are not part of this demo.
 
 ## 1. Start an isolated PostgreSQL cluster
 
@@ -43,7 +47,26 @@ uv run uvicorn 'crosstalk.api.app:create_app' --factory --host 127.0.0.1 --port 
 
 Record the operator token for the console. Do not commit it.
 
-## 3. Start the console
+## 3. Start the worker
+
+In another terminal (same repository root):
+
+```powershell
+$env:CT_WORKER_DATABASE_URL = 'postgresql+psycopg://crosstalk@127.0.0.1:55432/crosstalk'
+$env:CT_WORKER_ARTIFACTS_ROOT = (Resolve-Path '.rtifacts').Path
+$env:CT_WORKER_CODE_COMMIT = git rev-parse HEAD
+uv run crosstalk-worker
+```
+
+The worker claims jobs with `FOR UPDATE SKIP LOCKED` leases and runs each
+collection in a child process. `uv run crosstalk-worker --once` drains every
+runnable job and exits, which is useful in scripts. Optional settings:
+`CT_WORKER_MOCK_TOKEN_DELAY_MS` (default 1.0) and `CT_WORKER_QUEUES`
+(JSON list, default `["collect","attack","evaluate"]`). On Windows, TLS
+keylog validation is disabled for local-dev sessions and recorded as a session
+note, because CPython's `keylog_filename` aborts under this OpenSSL build.
+
+## 4. Start the console
 
 In a second terminal:
 
@@ -54,12 +77,13 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open `http://127.0.0.1:3000`, enter the operator token, and create or inspect an
-experiment. Creating a run writes real PostgreSQL experiment, session, and job
-rows. Jobs remain queued because production stage adapters are not yet wired;
-the UI deliberately displays that state rather than inventing measurements.
+Open `http://127.0.0.1:3000`, enter the operator token, and create an
+experiment. Starting a run writes PostgreSQL experiment, session and job rows.
+The worker then executes them, and the console follows the stages until the
+report is published. A small E0 configuration (two sessions, `per_class: 6`)
+finishes in about a minute.
 
-## 4. Verify the real stack
+## 5. Verify the real stack
 
 With both services still running:
 
@@ -74,9 +98,9 @@ The test checks database readiness, an unauthorized response, authenticated
 dashboard data, experiment/session/job rendering, and desktop/mobile layouts.
 It writes screenshots to `docs/evidence/`.
 
-## 5. Stop the database
+## 6. Stop the database
 
-After stopping Vite and Uvicorn with Ctrl+C:
+After stopping Vite, the worker and Uvicorn with Ctrl+C:
 
 ```powershell
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'

@@ -168,7 +168,9 @@ async def run_session(
     ca_file: str | None = None,
     experiment: ExperimentConfig | None = None,
     capture: CaptureController | None = None,
+    session_id: str | None = None,
 ) -> str:
+    """Collect one session; ``session_id`` lets the control plane pre-assign the ID."""
     provenance = _provenance()
     capture = capture or HttpCaptureControl()
     policies = experiment.policy_set if experiment is not None else []
@@ -178,7 +180,7 @@ async def run_session(
         corpus = load_corpus(workload if workload.is_absolute() else root / workload)
     planned = plan_session(plan, corpus)
     slots = planned.rows
-    session_id = new_ulid()
+    session_id = session_id or new_ulid()
     session = root / "sessions" / session_id
     session.mkdir(parents=True, exist_ok=False)
     session.chmod(0o775)

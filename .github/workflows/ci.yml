@@ -32,7 +32,14 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --all-extras
+      # The runner image ships PostgreSQL; no container is used.
+      - name: Start PostgreSQL for queue/worker integration tests
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -c "CREATE ROLE crosstalk LOGIN CREATEDB PASSWORD 'ci-only-password'"
       - run: uv run pytest --cov=crosstalk --cov-report=term --cov-report=xml --cov-fail-under=80 -W error
+        env:
+          CT_TEST_DATABASE_URL: postgresql+psycopg://crosstalk:ci-only-password@127.0.0.1:5432/postgres
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -50,6 +50,34 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
 
+  # Claims plan/collect/reconstruct/validate/analyze/report jobs. The local-dev lab
+  # (synthetic upstream + TLS shaper + recording relay) is non-reportable by
+  # construction; the GPU laboratory uses CT_WORKER_LAB=external on the lab host.
+  worker:
+    build:
+      context: ../..
+      dockerfile: services/api/Dockerfile
+    command: [crosstalk-worker]
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes:
+      - ../../artifacts:/artifacts
+    environment:
+      CT_WORKER_DATABASE_URL: postgresql+psycopg://crosstalk:${CT_POSTGRES_PASSWORD}@postgres:5432/crosstalk
+      CT_WORKER_ARTIFACTS_ROOT: /artifacts
+      CT_WORKER_CODE_COMMIT: ${CT_CODE_COMMIT:-unknown}
+      CT_WORKER_LAB: ${CT_WORKER_LAB:-local-dev}
+      CT_WORKER_CORPUS_SOURCE: /app/workloads/corpus/v1/corpus.yaml
+    healthcheck:
+      disable: true
+    networks: [control]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
   console:
     build: ../../apps/console
     restart: unless-stopped

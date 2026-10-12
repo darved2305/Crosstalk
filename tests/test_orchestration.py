@@ -107,6 +107,9 @@ def test_session_state_machine_preserves_terminal_meaning() -> None:
         ([SessionState.PARTIAL], [JobState.SUCCEEDED], ExperimentState.PARTIAL),
         ([SessionState.CANCELLED], [JobState.CANCELLED], ExperimentState.CANCELLED),
         ([SessionState.VALID], [JobState.DEAD], ExperimentState.FAILED),
+        # Pending analysis keeps an experiment running even when a session is PARTIAL.
+        ([SessionState.PARTIAL], [JobState.SUCCEEDED, JobState.QUEUED], ExperimentState.RUNNING),
+        ([SessionState.PARTIAL], [JobState.RUNNING, JobState.DEAD], ExperimentState.FAILED),
     ],
 )
 def test_experiment_state_is_derived(
@@ -118,15 +121,18 @@ def test_experiment_state_is_derived(
 def test_stage_registry_enforces_access_and_dependencies() -> None:
     assert STAGES["collect"].queue == Queue.COLLECT
     assert STAGES["reconstruct"].queue == Queue.ATTACK
-    assert not STAGES["attack"].oracle_allowed
+    assert not STAGES["reconstruct"].oracle_allowed
     assert STAGES["validate"].oracle_allowed
-    assert STAGES["stats"].dependencies == ("attack", "validate")
+    assert STAGES["analyze"].dependencies == ("validate",)
+    assert STAGES["report"].dependencies == ("analyze",)
+    for stage in STAGES.values():
+        assert all(dependency in STAGES for dependency in stage.dependencies)
 
 
 def test_stage_key_is_stable_and_input_sensitive() -> None:
-    first = stage_key("features", {"b": "2", "a": "1"}, "config", "commit")
-    assert first == stage_key("features", {"a": "1", "b": "2"}, "config", "commit")
-    assert first != stage_key("features", {"a": "changed", "b": "2"}, "config", "commit")
+    first = stage_key("analyze", {"b": "2", "a": "1"}, "config", "commit")
+    assert first == stage_key("analyze", {"a": "1", "b": "2"}, "config", "commit")
+    assert first != stage_key("analyze", {"a": "changed", "b": "2"}, "config", "commit")
     assert len(first) == 64
 
 
@@ -153,14 +159,14 @@ def test_atomic_stage_output_cleans_interrupted_write(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_worker_succeeds_one_claimed_job() -> None:
-    store = FakeJobStore([{"id": "job", "kind": "features", "payload": {"x": 1}}])
+    store = FakeJobStore([{"id": "job", "kind": "reconstruct", "payload": {"x": 1}}])
     seen: list[object] = []
 
     async def handler(payload: dict[str, object] | object, cancelled: Cancelled) -> None:
         seen.append(payload)
         assert not await cancelled()
 
-    worker = Worker(store, Queue.ATTACK, "worker-1", {"features": handler})
+    worker = Worker(store, Queue.ATTACK, "worker-1", {"reconstruct": handler})
     assert await worker.run_once()
     assert seen == [{"x": 1}]
     assert store.succeeded == ["job"]
@@ -169,13 +175,13 @@ async def test_worker_succeeds_one_claimed_job() -> None:
 
 @pytest.mark.asyncio
 async def test_worker_records_failure_without_swallowing_it() -> None:
-    store = FakeJobStore([{"id": "job", "kind": "features", "payload": {}}])
+    store = FakeJobStore([{"id": "job", "kind": "reconstruct", "payload": {}}])
 
     async def handler(payload: object, cancelled: Cancelled) -> None:
         del payload, cancelled
         raise RuntimeError("broken stage")
 
-    worker = Worker(store, Queue.ATTACK, "worker-1", {"features": handler})
+    worker = Worker(store, Queue.ATTACK, "worker-1", {"reconstruct": handler})
     assert await worker.run_once()
     assert store.failed == [("job", {"type": "RuntimeError", "message": "broken stage"})]
     assert not store.succeeded

@@ -26,6 +26,7 @@ dependencies = [
 crosstalk = "crosstalk.cli:app"
 crosstalk-mock = "crosstalk.testing.mock_upstream:main"
 crosstalk-api = "crosstalk.api.app:main"
+crosstalk-worker = "crosstalk.orchestration.runner:main"
 
 [project.optional-dependencies]
 ml = [

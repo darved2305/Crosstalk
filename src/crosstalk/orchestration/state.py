@@ -70,6 +70,8 @@ def require_transition(current: SessionState, target: SessionState) -> None:
 def derive_experiment_state(sessions: list[SessionState], jobs: list[JobState]) -> ExperimentState:
     if any(state in {JobState.DEAD, JobState.FAILED} for state in jobs):
         return ExperimentState.FAILED
+    if any(state in {JobState.QUEUED, JobState.RUNNING} for state in jobs):
+        return ExperimentState.RUNNING
     if sessions and all(state == SessionState.CANCELLED for state in sessions):
         return ExperimentState.CANCELLED
     if any(state in {SessionState.INVALID, SessionState.PARTIAL} for state in sessions):

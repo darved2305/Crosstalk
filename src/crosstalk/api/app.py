@@ -316,7 +316,7 @@ def create_app(
         require_ulid(experiment_id, "experiment_id")
         experiment = control.get_experiment(experiment_id)
         return PlainTextResponse(
-            result_data.report(str(experiment["name"])), media_type="text/markdown"
+            result_data.report(str(experiment["name"]), experiment_id), media_type="text/markdown"
         )
 
     @app.get("/v1/experiments/{experiment_id}/frontier", response_model=FrontierResults)

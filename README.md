@@ -65,10 +65,14 @@ docker compose -f deploy/compose/platform.yml --env-file deploy/compose/platform
 ```
 
 The API is bound to `127.0.0.1:8080` and the console to `127.0.0.1:3000`.
-Migrations run as a one-shot dependency before API startup. Read
-[`docs/runbooks/control-plane.md`](docs/runbooks/control-plane.md) before using
-the run endpoint: the queue engine is durable, but production stage adapters
-are intentionally not represented as running Compose services yet.
+Migrations run as a one-shot dependency before API startup. The `worker`
+service (`crosstalk-worker`) executes queued runs through plan, collect,
+reconstruct, validate, analyze and report; see
+[`docs/runbooks/control-plane.md`](docs/runbooks/control-plane.md). Without
+Docker, follow [`docs/runbooks/windows-zero-cost-demo.md`](docs/runbooks/windows-zero-cost-demo.md),
+which runs PostgreSQL, the API, the worker and the console natively. Its
+local-dev lab uses a synthetic upstream and a recording relay, so its results
+are always marked NOT REPORTABLE.
 
 For a completed session, `uv run crosstalk manifest audit
 artifacts/sessions/<session-id>/manifest.json` fails closed unless code,

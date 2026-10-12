@@ -11,6 +11,7 @@ from crosstalk.common.ids import new_ulid
 from crosstalk.contracts.config import ExperimentConfig
 from crosstalk.orchestration.jobs import MAX_ATTEMPTS
 from crosstalk.orchestration.schema import (
+    events,
     experiments,
     idempotency_keys,
     jobs,
@@ -23,6 +24,8 @@ from crosstalk.orchestration.state import (
     SessionState,
     derive_experiment_state,
 )
+
+EVENT_LIMIT = 50
 
 
 class NotFoundError(Exception):
@@ -182,6 +185,29 @@ class PostgresControlStore:
                     .order_by(sessions.c.id)
                 ).mappings()
             ]
+            summary["jobs"] = [
+                self._job(job)
+                for job in connection.execute(
+                    select(jobs)
+                    .where(jobs.c.experiment_id == experiment_id, jobs.c.session_id.is_(None))
+                    .order_by(jobs.c.created_at)
+                ).mappings()
+            ]
+            summary["events"] = [
+                {
+                    "id": event["id"],
+                    "session_id": event["session_id"],
+                    "kind": event["kind"],
+                    "data": event["data"],
+                    "created_at": event["created_at"],
+                }
+                for event in connection.execute(
+                    select(events)
+                    .where(events.c.experiment_id == experiment_id)
+                    .order_by(events.c.id.desc())
+                    .limit(EVENT_LIMIT)
+                ).mappings()
+            ]
             return summary
 
     def get_session(self, session_id: str) -> Mapping[str, object]:
@@ -293,18 +319,20 @@ class PostgresControlStore:
             "experiment_id": row["experiment_id"],
             "state": row["state"],
             "cancel_requested": row["cancel_requested"],
-            "jobs": [
-                {
-                    "id": job["id"],
-                    "kind": job["kind"],
-                    "queue": job["queue"],
-                    "state": job["state"],
-                    "attempts": job["attempts"],
-                    "max_attempts": job["max_attempts"],
-                    "error": job["error"],
-                }
-                for job in job_rows
-            ],
+            "jobs": [PostgresControlStore._job(job) for job in job_rows],
+        }
+
+    @staticmethod
+    def _job(job: RowMapping) -> Mapping[str, object]:
+        return {
+            "id": job["id"],
+            "kind": job["kind"],
+            "queue": job["queue"],
+            "state": job["state"],
+            "attempts": job["attempts"],
+            "max_attempts": job["max_attempts"],
+            "error": job["error"],
+            "updated_at": job["updated_at"],
         }
 
     @staticmethod

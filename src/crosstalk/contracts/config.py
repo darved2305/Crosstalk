@@ -169,8 +169,17 @@ class AnalysisConfig(StrictModel):
     alpha: float = Field(default=0.05, gt=0, lt=1)
 
 
+class ExperimentKind(StrEnum):
+    VALIDATION = "validation"
+    E0 = "e0"
+    E1 = "e1"
+    E2 = "e2"
+
+
 class ExperimentConfig(StrictModel):
     name: str
+    # Which analysis the control plane runs after collection; inferred when omitted.
+    kind: ExperimentKind | None = None
     sessions: list[SessionPlan] = Field(min_length=1)
     policy_set: list[PolicyConfig] = Field(default_factory=lambda: [PolicyConfig()])
     capture: CaptureConfig | None = None
@@ -178,6 +187,20 @@ class ExperimentConfig(StrictModel):
 
     def sha256(self) -> str:
         return sha256_bytes(self.model_dump_json(exclude_none=True).encode())
+
+    def resolved_kind(self) -> ExperimentKind:
+        if self.kind is not None:
+            return self.kind
+        if any(plan.requests is not None for plan in self.sessions):
+            return ExperimentKind.VALIDATION
+        if any(
+            plan.concurrency_levels is not None or plan.stream_interval_variants
+            for plan in self.sessions
+        ):
+            return ExperimentKind.E2
+        if len(self.policy_set) > 1 or any(len(plan.session_arms) > 1 for plan in self.sessions):
+            return ExperimentKind.E1
+        return ExperimentKind.E0
 
 
 class ChatRequest(BaseModel):

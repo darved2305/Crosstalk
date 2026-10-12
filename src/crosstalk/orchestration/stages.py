@@ -20,15 +20,16 @@ class Stage:
     oracle_allowed: bool = False
 
 
+# Per-session stages run once per collected session. Feature extraction, attacker
+# training and statistics pool every session of an experiment (family-disjoint folds
+# span sessions), so they run together in the experiment-level ``analyze`` stage.
 STAGES: Mapping[str, Stage] = {
     "plan": Stage("plan", Queue.COLLECT, ()),
     "collect": Stage("collect", Queue.COLLECT, ("plan",), oracle_allowed=True),
     "reconstruct": Stage("reconstruct", Queue.ATTACK, ("collect",)),
     "validate": Stage("validate", Queue.EVALUATE, ("reconstruct",), oracle_allowed=True),
-    "features": Stage("features", Queue.ATTACK, ("reconstruct",)),
-    "attack": Stage("attack", Queue.ATTACK, ("features",)),
-    "stats": Stage("stats", Queue.EVALUATE, ("attack", "validate"), oracle_allowed=True),
-    "report": Stage("report", Queue.EVALUATE, ("stats",), oracle_allowed=True),
+    "analyze": Stage("analyze", Queue.EVALUATE, ("validate",), oracle_allowed=True),
+    "report": Stage("report", Queue.EVALUATE, ("analyze",), oracle_allowed=True),
 }
 
 

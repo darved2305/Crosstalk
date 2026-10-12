@@ -39,9 +39,12 @@ documents.
 
 ## Known deployment boundary
 
-The durable queue, leasing, retries, cancellation, stage registry, and worker
-engine are implemented and unit-tested. Production stage adapters that advance
-the complete `plan -> collect -> reconstruct -> validate -> features -> attack
--> stats -> report` DAG are not yet wired to worker process entrypoints. The
-platform Compose file therefore starts PostgreSQL, migrations, API, and console
-only; it intentionally does not advertise nonfunctional worker services.
+The durable queue, leasing, retries, cancellation and stage registry are wired to
+the `crosstalk-worker` entry point. It runs the `plan -> collect -> reconstruct
+-> validate` stages per session and the `analyze -> report` stages per
+experiment. `tests/test_pipeline_postgres.py` drives that path end to end
+against a real PostgreSQL server: API run, queue, worker, artifacts and report.
+The platform Compose file adds a `worker` service. That service definition was
+validated statically, but no container was run because Docker is unavailable on
+this host. The worker's local-dev lab is not packet capture, so the Docker/Linux
+capture boundary described above still applies.

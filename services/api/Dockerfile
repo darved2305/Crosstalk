@@ -9,6 +9,7 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY alembic.ini ./
 COPY migrations ./migrations
+COPY workloads/corpus ./workloads/corpus
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
 USER 10001:10001
 EXPOSE 8080

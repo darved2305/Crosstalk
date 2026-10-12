@@ -441,6 +441,48 @@
         "title": "EvaluationRow",
         "type": "object"
       },
+      "EventView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "data",
+          "created_at"
+        ],
+        "title": "EventView",
+        "type": "object"
+      },
       "ExperimentConfig": {
         "additionalProperties": false,
         "properties": {
@@ -458,6 +500,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CaptureConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExperimentKind"
               },
               {
                 "type": "null"
@@ -532,9 +584,23 @@
             "title": "Created At",
             "type": "string"
           },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventView"
+            },
+            "title": "Events",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobView"
+            },
+            "title": "Jobs",
+            "type": "array"
           },
           "name": {
             "title": "Name",
@@ -576,6 +642,16 @@
         ],
         "title": "ExperimentDetail",
         "type": "object"
+      },
+      "ExperimentKind": {
+        "enum": [
+          "validation",
+          "e0",
+          "e1",
+          "e2"
+        ],
+        "title": "ExperimentKind",
+        "type": "string"
       },
       "ExperimentPage": {
         "additionalProperties": false,
@@ -887,6 +963,18 @@
           "state": {
             "title": "State",
             "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
         },
         "required": [

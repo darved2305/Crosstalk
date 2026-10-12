@@ -34,7 +34,7 @@ class ResultStore(Protocol):
         self, session_id: str, request_id: str, layer: str, limit: int = 20_000
     ) -> Mapping[str, object]: ...
     def emissions(self, session_id: str, request_id: str) -> list[Mapping[str, object]]: ...
-    def report(self, experiment_name: str) -> str: ...
+    def report(self, experiment_name: str, experiment_id: str | None = None) -> str: ...
 
 
 class DuckDBResultStore:
@@ -178,8 +178,12 @@ class DuckDBResultStore:
             [request_id],
         )
 
-    def report(self, experiment_name: str) -> str:
-        path = self._file("experiments", experiment_name, "report.md")
+    def report(self, experiment_name: str, experiment_id: str | None = None) -> str:
+        path = (
+            self._experiment_file(experiment_id, experiment_name, "report.md")
+            if experiment_id is not None
+            else self._file("experiments", experiment_name, "report.md")
+        )
         try:
             return path.read_text(encoding="utf-8")
         except UnicodeError as error:

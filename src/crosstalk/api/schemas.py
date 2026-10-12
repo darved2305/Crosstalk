@@ -40,6 +40,7 @@ class JobView(StrictModel):
     attempts: int
     max_attempts: int
     error: dict[str, object] | None = None
+    updated_at: datetime | None = None
 
 
 class SessionView(StrictModel):
@@ -50,9 +51,21 @@ class SessionView(StrictModel):
     jobs: list[JobView] = Field(default_factory=lambda: list[JobView]())
 
 
+class EventView(StrictModel):
+    id: str
+    session_id: str | None = None
+    kind: str
+    data: dict[str, object]
+    created_at: datetime
+
+
 class ExperimentDetail(ExperimentSummary):
     config: dict[str, object]
     sessions: list[SessionView]
+    # Experiment-level stages (analysis and report) that belong to no single session.
+    jobs: list[JobView] = Field(default_factory=lambda: list[JobView]())
+    # Most recent pipeline events first.
+    events: list[EventView] = Field(default_factory=lambda: list[EventView]())
 
 
 class ControlResult(StrictModel):
