@@ -1,5 +1,26 @@
 # Runtime measurements
 
+## Linux/uvloop WSL2 probe, 2026-10-12
+
+The full 20-second runtime invocation ran in native Ubuntu WSL2 with uvloop,
+three repetitions, and a bounded 30-second soak. The committed raw data,
+command, timestamp, commit, and environment are in
+[`../docs/evidence/runtime-linux-20261012.json`](../docs/evidence/runtime-linux-20261012.json).
+
+Median timer p99 was 2.0 ms at 64 streams and 9.0 ms at 256. Added relay p99
+was 20.64 ms at 64 and 35.44 ms at 256; the 256-stream case returned 156 errors
+in each repetition. All nine TLS record cases matched and 10,000 randomized
+SSE chunking cases had zero mismatches. All three slow readers hit the configured
+stall timeout; peak application buffer was 533,940 bytes. Normal-client p99
+increased by 10.69 ms in the median slow-reader repetition. The 30-second soak
+recorded zero RSS growth and a 170.07 MiB peak RSS.
+
+**The Linux runtime gate failed.** These are actual observations, not substituted
+Windows values or a cloud deployment. The 30-second soak does not close the
+30-minute gate. The relay errors are consistent with aiohttp's default
+100-connection pool and the shaper's five-second connection timeout for
+approximately ten-second streams; no fix or passing remeasurement is claimed.
+
 ## Exploratory Windows probe, 2026-09-30
 
 Command: `uv run python bench/runtime/run.py --duration 0.4 --output artifacts/bench/runtime-windows-quick.json`.

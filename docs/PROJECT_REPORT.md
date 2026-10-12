@@ -167,6 +167,61 @@ replace missing console screenshots with generated images.
 
 ## Verification and fixes found using actual data
 
+### Linux/uvloop runtime measurement
+
+The existing Ubuntu WSL2 installation was used without Docker, a GPU, or a cloud
+VM. Its dependencies were installed into a separate Linux virtual environment,
+preserving the Windows environment. The command was:
+
+```bash
+UV_PROJECT_ENVIRONMENT=/home/darved2305/.cache/crosstalk-report-venv \
+  /home/darved2305/.local/bin/uv run python bench/runtime/run.py \
+  --duration 20 --soak-seconds 30 --output docs/evidence/runtime-linux-20261012.json
+```
+
+Raw observations and provenance are committed in
+[runtime-linux-20261012.json](evidence/runtime-linux-20261012.json).
+The artifact records Linux kernel 6.6.87.2, uvloop, CPython 3.13.12, OpenSSL
+3.5.5, commit `09d2e5b`, and the measured dirty-tree flag without modifying it.
+
+| Measurement | Median repetition observation |
+|---|---:|
+| TLS record fidelity, spaced/back-to-back/slow reader | exact in 9/9 repetitions |
+| Randomized SSE chunking | 10,000 cases; 0 mismatches |
+| Timer p99 / p99.9, 64 streams | 2.0 / 3.0 ms |
+| Timer p99 / p99.9, 256 streams | 9.0 / 25.0 ms |
+| Added relay p99, 64 streams | 20.64 ms; 0 errors |
+| Added relay p99, 256 streams | 35.44 ms; 156 errors per repetition |
+| Slow-reader buffer peak | 533,940 bytes, below the 1 MiB cap |
+| Slow reader aborted at configured timeout | yes, 3/3 repetitions |
+| Normal-client p99 increase with slow reader | 10.69 ms |
+| 30-second soak at 64 streams | 0% measured RSS growth; 170.07 MiB peak RSS |
+
+This runtime invocation is eligible to evaluate the Linux/uvloop thresholds,
+but **the runtime gate did not pass**. The 256-stream timer, relay latency, and
+slow-client isolation exceed their thresholds. The 30-second soak cannot
+establish the required 30-minute soak. The 256-stream relay's 156 failures are
+consistent with the default aiohttp connection-pool limit of 100 and the
+shaper's five-second connection timeout while responses last approximately ten
+seconds; this is a code-based diagnosis rather than a separately verified fix.
+The failures are retained for the report, and no passing-runtime claim is made.
+
+### Hosted CI verification
+
+[GitHub Actions run 38227854706](https://github.com/darved2305/Crosstalk/actions/runs/38227854706)
+passed all five jobs at commit `09d2e5b`: Python quality, Python tests, console,
+security, and static deployment validation. The hosted Ubuntu runner executed
+184 Python tests in 127.33 seconds with **81.56% coverage**, passing the 80%
+minimum. It also passed 10 frontend tests and three fixture browser tests;
+the opt-in real-stack tests are skipped on that runner because their required
+local API credentials are not present. The six-test browser run documented
+above executed on the local stack.
+
+This establishes hosted CI execution. It does not establish GCP application
+deployment. The repository is private; the GitHub billing usage endpoint could
+not be read with the current token's scopes, so total GitHub Actions charges
+were not verified. Billing settings and access scopes were not changed.
+
 The real stack exposed and corrected persistence-column response failures,
 numeric-offset date validation, name-to-ID result mapping, nullable E0/E1
 concurrency, and unsafe nanosecond serialization. Timestamps now cross the API
@@ -209,8 +264,8 @@ screenshots are committed for the report.
 
 ## Remaining requirements for the research/cloud target
 
-Scientific completion still requires Linux with uvloop, native dumpcap/tshark
+Scientific completion still requires native dumpcap/tshark
 capture validation, real vLLM serving at pinned revisions, complete provenance,
-the full runtime and soak gates, and production worker stage integration.
+the failed Linux runtime gates and full soak gate to be resolved, and production worker stage integration.
 Cloud execution additionally requires a permitted billing arrangement and
 adequate cost allowance. This development campaign does not close those gates.

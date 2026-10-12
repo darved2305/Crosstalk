@@ -37,6 +37,19 @@ Final Windows verification: `uv run pytest -q` — **184 passed in 282.67 s**;
 passed. `uv run ruff check .`, `uv run ruff format --check .`, and `uv run pyright`
 passed; `uv run lint-imports` kept all seven architecture contracts.
 
+Hosted Ubuntu CI passed all five jobs for commit `09d2e5b`:
+<https://github.com/darved2305/Crosstalk/actions/runs/38227854706>.
+The hosted Python run passed 184 tests with 81.56% coverage. Its three browser
+tests use fixtures; the three opt-in tests for the real stack are skipped there.
+GitHub billing usage was inaccessible to the current token; total Actions
+charges are not asserted. No GCP resources or billing changes were made.
+
+`runtime-linux-20261012.json` records the actual 20-second Linux/uvloop runtime
+invocation with three repetitions and a 30-second soak. The runtime gate
+**failed**: at 256 streams timer p99 was 9 ms, relay added p99 was 35.44 ms with
+156 errors in each repetition; slow-client isolation also exceeded its target.
+Full analysis, exact command, and limitations are in the project report.
+
 `gcp-audit.json` contains actual authenticated read-only Google Cloud outputs.
 It proves billing was disabled. The Compute listing contains a billing-required
 warning; its empty list is not a complete VM inventory. The listed historical
