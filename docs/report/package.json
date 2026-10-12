@@ -1,0 +1,11 @@
+{
+  "name": "crosstalk-report",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build_report.mjs"
+  },
+  "dependencies": {
+    "docx": "9.5.1"
+  }
+}
