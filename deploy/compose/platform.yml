@@ -46,7 +46,7 @@ services:
       CT_API_CODE_COMMIT: ${CT_CODE_COMMIT:-unknown}
       CT_API_ARTIFACTS_ROOT: /artifacts
     ports: ["127.0.0.1:8080:8080"]
-    networks: [control]
+    networks: [control, published]
     depends_on:
       migrate: { condition: service_completed_successfully }
 
@@ -57,10 +57,13 @@ services:
     build:
       context: ../..
       dockerfile: services/api/Dockerfile
+      args:
+        UV_EXTRAS: --extra ml
     command: [crosstalk-worker]
     restart: unless-stopped
     read_only: true
-    user: "10001:10001"
+    # Must be able to write ../../artifacts; set to the host owner of that directory.
+    user: "${CT_WORKER_USER:-10001:10001}"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
@@ -70,6 +73,7 @@ services:
       CT_WORKER_DATABASE_URL: postgresql+psycopg://crosstalk:${CT_POSTGRES_PASSWORD}@postgres:5432/crosstalk
       CT_WORKER_ARTIFACTS_ROOT: /artifacts
       CT_WORKER_CODE_COMMIT: ${CT_CODE_COMMIT:-unknown}
+      CT_CODE_COMMIT: ${CT_CODE_COMMIT:-unknown}
       CT_WORKER_LAB: ${CT_WORKER_LAB:-local-dev}
       CT_WORKER_CORPUS_SOURCE: /app/workloads/corpus/v1/corpus.yaml
     healthcheck:
@@ -87,13 +91,16 @@ services:
     environment:
       CT_CONSOLE_API_URL: http://api:8080
     ports: ["127.0.0.1:3000:3000"]
-    networks: [control]
+    networks: [control, published]
     depends_on:
       api: { condition: service_healthy }
 
 networks:
   control:
     internal: true
+  # Docker publishes no ports from an internal-only network, so the two
+  # loopback-published services also join this one.
+  published: {}
 
 volumes:
   postgres-data:

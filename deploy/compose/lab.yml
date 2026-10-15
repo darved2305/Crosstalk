@@ -27,6 +27,8 @@ services:
       context: ../..
       dockerfile: services/netinit/Dockerfile
     network_mode: service:shaper
+    # Root for NET_ADMIN, host group so it can write the host-owned artifacts/lab.
+    user: "0:${CT_GID:-1000}"
     cap_drop: [ALL]
     cap_add: [NET_ADMIN]
     security_opt: [no-new-privileges:true]
@@ -73,6 +75,7 @@ services:
       dockerfile: services/netinit/Dockerfile
     command: ["crosstalk", "lab", "impair", "--root", "/artifacts/lab", "--interface", "eth0"]
     network_mode: service:loadgen
+    user: "0:${CT_GID:-1000}"
     cap_drop: [ALL]
     cap_add: [NET_ADMIN]
     security_opt: [no-new-privileges:true]
