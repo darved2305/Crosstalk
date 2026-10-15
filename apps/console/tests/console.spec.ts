@@ -62,7 +62,7 @@ const details = summaries.map((summary, i) => ({
 test.beforeEach(async ({ page }) => {
   await page.route("**/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (route.request().headers().authorization !== `Bearer ${"t".repeat(32)}`)
+    if (route.request().headers()["x-crosstalk-authorization"] !== `Bearer ${"t".repeat(32)}`)
       return route.fulfill({ status: 401, json: { detail: "Invalid token" } });
     if (path === "/v1/experiments" && route.request().method() === "GET")
       return route.fulfill({ json: { items: summaries, next_cursor: null } });

@@ -9,7 +9,8 @@ server {
     location /v1/ {
         proxy_pass ${CT_CONSOLE_API_URL};
         proxy_set_header Host $host;
-        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Authorization $http_x_crosstalk_authorization;
+        proxy_set_header X-Crosstalk-Authorization "";
         proxy_set_header X-Forwarded-Proto $scheme;
     }
     location / {

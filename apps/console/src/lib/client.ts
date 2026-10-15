@@ -93,7 +93,9 @@ async function send(path: string, init: RequestInit, oracle: boolean) {
     response = await fetch(path, {
       ...init,
       headers: {
-        Authorization: `Bearer ${token}`,
+        // Not `Authorization`: proxies in front of the console (Cloud Shell preview, IAP)
+        // claim that header for their own login. nginx and the Vite proxy map it back.
+        "X-Crosstalk-Authorization": `Bearer ${token}`,
         ...(init.body ? { "Content-Type": "application/json" } : {}),
         ...init.headers,
       },
