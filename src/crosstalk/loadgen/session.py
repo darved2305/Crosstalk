@@ -135,14 +135,19 @@ async def _collect_emissions(
 
 
 def _git_state() -> tuple[str, bool]:
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
-    ).stdout.strip()
-    dirty = bool(
-        subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
         ).stdout.strip()
-    )
+        dirty = bool(
+            subprocess.run(
+                ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+            ).stdout.strip()
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        # A container image has no checkout: use the commit it was deployed from and
+        # report the tree as dirty, because a clean tree cannot be shown.
+        return os.environ.get("CT_CODE_COMMIT", "unknown"), True
     return commit, dirty
 
 
