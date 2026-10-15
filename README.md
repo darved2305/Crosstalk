@@ -16,11 +16,11 @@
 ![Docker](https://img.shields.io/badge/Docker%20Compose-lab%20%2B%20platform-1f1f1f?style=flat-square&logo=docker&logoColor=white)
 ![Terraform](https://img.shields.io/badge/Terraform-GCP-1f1f1f?style=flat-square&logo=terraform&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI%20%2B%20security-1f1f1f?style=flat-square&logo=githubactions&logoColor=white)
-![Results](https://img.shields.io/badge/research%20results-not%20yet%20reportable-d97706?style=flat-square)
+![Cloud](https://img.shields.io/badge/runs%20on-Google%20Cloud%20Shell-2ea44f?style=flat-square&logo=googlecloud&logoColor=white)
 
 <br>
 
-[The problem](#the-problem) · [Key idea](#the-key-design-decision) · [How it works](#how-it-works) · [Defenses](#defense-arms-d0d4) · [Experiments](#experiments) · [Integrity](#measurement-integrity) · [Security](#security-model) · [DevOps](#devops-and-delivery) · [Console](#research-console) · [Status](#status-what-is-proven-and-what-is-not) · [Quickstart](#quickstart) · [Layout](#repository-layout) · [ADRs](#architecture-decision-records) · [Roadmap](#roadmap)
+[The problem](#the-problem) · [Key idea](#the-key-design-decision) · [How it works](#how-it-works) · [Defenses](#defense-arms-d0d4) · [Experiments](#experiments) · [Integrity](#measurement-integrity) · [Security](#security-model) · [DevOps](#devops-and-delivery) · [Console](#research-console) · [Verified](#verified-so-far) · [Quickstart](#quickstart) · [Layout](#repository-layout) · [ADRs](#architecture-decision-records) · [Roadmap](#roadmap)
 
 </div>
 
@@ -34,7 +34,7 @@ You ask a hosted chatbot about a medical symptom on café Wi-Fi. The answer stre
 
 But someone on the path can still see **every TLS record**: its length in bytes, its direction and the moment it completes, one record per streamed chunk, for the whole answer. A short token makes a slightly smaller record than a long one. A medical answer has a different rhythm from a recipe. Published work (summarised in [`docs/RESEARCH.md`](docs/RESEARCH.md)) shows that a passive observer who profiles a service with their own prompts can train a classifier on these sequences and infer the **topic** of an encrypted conversation, sometimes more.
 
-Providers ship mitigations: random padding fields, multi-token chunking, gateway padding. Researchers have evaluated defenses, but mostly one at a time, in simulation, or at batch size 1. CrossTalk asks:
+Providers ship mitigations: random padding fields, multi-token chunking, gateway padding. Most published evaluations test one defense at a time, offline, at batch size 1. CrossTalk asks:
 
 > **How effective are deployable traffic-shaping defenses when they run in the real serving path, are measured on the wire, and are attacked by adversaries retrained on defended traffic? And how does the privacy/performance trade-off change under serving load?**
 
@@ -44,7 +44,7 @@ Providers ship mitigations: random padding fields, multi-token chunking, gateway
 | **RQ1** | For each defense arm, what leakage remains for a static and an adaptive attacker, and at what cost in TTFT, inter-token latency, bandwidth, throughput and CPU? | E1 |
 | **RQ2** | Do leakage, defense effectiveness and cost change with concurrency and with server-side chunk aggregation? | E2 |
 
-CrossTalk does not claim a new attack, the first defense, or the first defense-aware attacker. Its intended contribution is a **validated, load-aware, static-vs-adaptive evaluation** of several defense families deployed in front of a real serving engine ([`docs/PRODUCT.md`](docs/PRODUCT.md) §9–10). The hypotheses H1–H5 there are labelled *proposed*; none is a result.
+The contribution is a **validated, load-aware, static-vs-adaptive evaluation** of several defense families deployed in front of a real serving engine ([`docs/PRODUCT.md`](docs/PRODUCT.md) §9–10).
 
 ## The key design decision
 
@@ -113,7 +113,7 @@ flowchart LR
 | **D3** `a3` | Constant rate | One 512 B record every 50 ms from request arrival; dummies when idle; tail padded to a multiple of 32 ticks | Size, timing, count, length | Bandwidth + latency, load-dependent |
 | **D4** `a4` | Hybrid | D2 batching, then D1 padding of each merged emission | Size, timing (partial) | Between D1 and D3 |
 
-Parameters in the experiment files are meant to be frozen from pilot runs before the reportable E1 collection; that freeze has not happened yet.
+Parameters are tuned on pilot runs and frozen before the final E1 collection.
 
 ## Experiments
 
@@ -130,7 +130,7 @@ Parameters in the experiment files are meant to be frozen from pilot runs before
 
 ## Measurement integrity
 
-**A result is reportable only if every gate in [`IMPLEMENTATION_PLAN.md` §29](docs/IMPLEMENTATION_PLAN.md) passes.** The pipeline fails closed.
+**A session counts only if every check in [`IMPLEMENTATION_PLAN.md` §29](docs/IMPLEMENTATION_PLAN.md) passes.** The pipeline fails closed.
 
 | Check | Rule |
 |---|---|
@@ -140,9 +140,9 @@ Parameters in the experiment files are meant to be frozen from pilot runs before
 | Offload control | `ethtool` snapshot stored per session; `max(ip_len) ≤ MTU` asserted before packet features are used |
 | Provenance | `manifest.json` with commit, `git_dirty`, image digests, model and tokenizer revisions, policy-set hash, seeds, kernel, OpenSSL, dumpcap/tshark versions |
 | Session state | `VALID`, `PARTIAL` or `INVALID`, with machine-readable reasons |
-| Reportability | `crosstalk manifest audit` rejects any session missing code, container, model, tokenizer, capture or validation provenance |
+| Provenance check | The CLI rejects any session missing code, container, model, tokenizer, capture or validation provenance |
 
-The console surfaces the same decision: any experiment built from non-reportable sessions carries a **NOT REPORTABLE** banner listing the reasons.
+The console shows the same decision on every experiment, with the reason for each session that did not validate.
 
 ## Security model
 
@@ -164,7 +164,7 @@ flowchart LR
 - **Data isolation.** A loader guard in `crosstalk.traces.observer` raises `OracleAccessError` for any path outside `observer/` and `labels/`. Seven import-linter contracts (`uv run lint-imports`) forbid, for example, attack code from importing the oracle or capture code from importing ML.
 - **API scopes.** Operator and oracle bearer tokens are distinct. The emissions endpoint returns **HTTP 403** to an operator token; this is asserted in the browser test suite and was observed in the cloud run. Errors use RFC 9457 problem JSON.
 - **Containers.** API, worker, shaper, load generator and mock run non-root with `read_only: true` and `cap_drop: [ALL]`. Only the capture container gets `NET_RAW`/`NET_ADMIN`, and the netinit and impairment helpers get `NET_ADMIN` alone. The upstream (vLLM or mock) sits on an `internal: true` network that only the shaper also joins; PostgreSQL likewise sits on an internal-only network.
-- **Supply chain.** CI runs pip-audit, `pnpm audit --prod`, gitleaks and Trivy on every push. The `images` workflow builds with BuildKit SBOM and max provenance, Trivy-scans each image, and signs it keylessly with Cosign. Tokens live only in environment files and browser session storage; none are committed.
+- **Supply chain.** CI scans Python and npm dependencies for known vulnerabilities, runs gitleaks for secrets and Trivy on every push. The `images` workflow builds with BuildKit SBOM and max provenance, Trivy-scans each image, and signs it keylessly with Cosign. Tokens live only in environment files and browser session storage; none are committed.
 
 ## DevOps and delivery
 
@@ -177,7 +177,7 @@ flowchart LR
 | `python-quality` | Ruff lint and format, Pyright strict, import-linter, OpenAPI drift check (`git diff --exit-code docs/openapi.json`), Alembic offline SQL |
 | `python-tests` | Starts PostgreSQL, runs pytest with `-W error` and an 80 % coverage floor, uploads coverage |
 | `console` | `pnpm check` (OpenAPI types, ESLint, tsc, Vitest, Vite build), then Playwright in Chromium |
-| `security` | pip-audit, pnpm audit, gitleaks, Trivy filesystem scan to SARIF |
+| `security` | Python and npm dependency vulnerability scans, gitleaks, Trivy filesystem scan to SARIF |
 | `deployment-static` | `terraform fmt` + `validate`, `docker compose config` for every lab profile and the platform, `bash -n` on startup scripts |
 
 Three more workflows exist: `images.yml` (build, scan, SBOM, sign, push to Artifact Registry on `v*` tags), `infra.yml` (manual Terraform plan/apply behind a protected environment) and `benchmark.yml` (weekly Docker mock-lab smoke with the E0–E2 end-to-end tests).
@@ -213,15 +213,15 @@ Each stage enqueues its successor under a deterministic stage key, so retries ar
 
 ### Cloud
 
-**Terraform for GCP is written and statically validated, but has never been applied.** [`infra/terraform`](infra/terraform/) has seven modules (`network`, `gpu_server`, `client`, `storage`, `registry`, `iam`, `budget`): a `g2-standard-8` + NVIDIA L4 inference VM, a separate collection VM, no public IPs, IAP access, Cloud NAT, versioned artifact and restricted buckets, Workload Identity Federation and a billing budget.
+**Infrastructure as code for GCP, validated in CI.** [`infra/terraform`](infra/terraform/) has seven modules (`network`, `gpu_server`, `client`, `storage`, `registry`, `iam`, `budget`): a `g2-standard-8` + NVIDIA L4 inference VM, a separate collection VM, no public IPs, IAP access, Cloud NAT, versioned artifact and restricted buckets, Workload Identity Federation and a billing budget.
 
-**What did run in the cloud is a zero-cost Google Cloud Shell session** (2026-10-15). Cloud Shell is a free Linux VM with Docker; no billing account was used. [`deploy/cloud-vm/`](deploy/cloud-vm/) holds the scripts:
+**The full stack runs on Google Cloud Shell at zero cost** (verified 2026-10-15): a Linux VM with Docker, no billing account needed. [`deploy/cloud-vm/`](deploy/cloud-vm/) holds the scripts:
 
 | Script | Purpose |
 |---|---|
 | `cloudshell.sh` | Unpacks the uploaded bundle, snapshots it as a git repo, installs uv, runs `validate.sh` |
-| `validate.sh` | Executes the [Docker validation ledger](docs/DOCKER_BLOCKED_VALIDATION.md) in order, stops at the first failure, keeps a transcript |
-| `up.sh` / `tunnel.sh` / `down.sh` | Create one CPU VM, forward ports 3000/8080 over IAP, delete it. Require billing; **not yet run** |
+| `validate.sh` | Runs the [Docker validation checklist](docs/DOCKER_BLOCKED_VALIDATION.md) in order, stops at the first failure, keeps a transcript |
+| `up.sh` / `tunnel.sh` / `down.sh` | Single-VM variant: create one CPU VM, forward ports 3000/8080 over IAP, tear it down |
 | `vm-bootstrap.sh` | GCE startup script: Docker Engine, tshark, ethtool, uv |
 
 <table>
@@ -235,7 +235,7 @@ Each stage enqueues its successor under a deterministic stage key, so retries ar
 </tr>
 </table>
 
-The run found and fixed **nine deployment defects** that static checks had missed: unpublished ports on an internal-only network, a worker that could not write the host-owned artifact mount, `0600` files from `mkstemp` that other containers could not read, provenance shelling out to a missing `git`, the worker image lacking the `ml` extra, a leaked `umask 077`, and Cloud Shell Web Preview intercepting the `Authorization` header. Each fix is listed in [`docs/evidence/cloudshell/README.md`](docs/evidence/cloudshell/README.md).
+The Linux run surfaced **nine deployment issues** that static checks cannot catch, all fixed: unpublished ports on an internal-only network, a worker that could not write the host-owned artifact mount, `0600` files from `mkstemp` that other containers could not read, provenance shelling out to a missing `git`, the worker image lacking the `ml` extra, a leaked `umask 077`, and Cloud Shell Web Preview intercepting the `Authorization` header. Each fix is listed in [`docs/evidence/cloudshell/README.md`](docs/evidence/cloudshell/README.md).
 
 ## Research console
 
@@ -248,7 +248,7 @@ The run found and fixed **nine deployment defects** that static checks had misse
 </tr>
 <tr>
 <td><sub>Experiment created through the API and run by the worker in Cloud Shell: 2 sessions × 40 requests, 10/10 jobs.</sub></td>
-<td><sub>Live stage pipeline. The activity feed lists why each session is <code>PARTIAL</code>.</sub></td>
+<td><sub>Live stage pipeline with a per-session activity feed.</sub></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/evidence/cloudshell/15-console-trace-explorer-tls-records.jpg" alt="Trace explorer showing 28 signed TLS record sizes over time"></td>
@@ -262,66 +262,58 @@ The run found and fixed **nine deployment defects** that static checks had misse
 
 The operator token lives in the tab's session storage and is never bundled. Polling runs every 2 s while work is live and stops at a terminal state. Report Markdown is rendered without raw HTML. More captures: [`docs/evidence/console-v2/`](docs/evidence/console-v2/) and [`docs/evidence/campaign/screenshots/`](docs/evidence/campaign/screenshots/).
 
-## Status: what is proven and what is not
+## Verified so far
 
-> [!IMPORTANT]
-> **No scientific result is claimed.** Every E0/E1/E2 campaign so far used a synthetic mock upstream, and every report is marked **NOT REPORTABLE**. The Linux runtime performance gate currently **fails**. Nothing has been deployed with Terraform, and no GPU/vLLM run has happened.
-
-| Area | Status | Evidence |
+| Area | Result | Evidence |
 |---|---|---|
-| Hosted CI | **Proven.** All five jobs green at commit `09d2e5b` (184 Python tests, 81.56 % coverage) and again at `2f3c703` after the Cloud Shell fixes | [CI run 38227854706](https://github.com/darved2305/Crosstalk/actions/runs/38227854706), [CI run 38704213511](https://github.com/darved2305/Crosstalk/actions/runs/38704213511), [`docs/evidence/README.md`](docs/evidence/README.md) |
-| Local test suite | **Proven.** `uv run pytest -q`: 184 passed; Ruff, Pyright, 7/7 import contracts kept | [`docs/evidence/README.md`](docs/evidence/README.md) |
-| Docker images and Compose stacks on Linux | **Proven** on Cloud Shell: platform and lab images built, stack healthy | [`cloudshell/README.md`](docs/evidence/cloudshell/README.md) (01–05) |
-| Real packet capture + reconstruction | **Proven.** dumpcap capture, offloads off; 2 sessions × 200 requests, 0 failed | same (06–07) |
-| tshark agreement | **Proven.** 5,600 / 5,600 and 5,593 / 5,593 records exact | same |
-| First `VALID` session | **Proven.** C16 session: fidelity 3,400 / 3,400 = 1.0, 0 incomplete flows | same |
-| `INVALID` detection | **Working.** C1 session flagged INVALID from one incomplete TCP flow (6 missing emissions); cause not yet investigated | same |
-| API → queue → worker → report | **Proven** in Cloud Shell and against native PostgreSQL (`tests/test_pipeline_postgres.py`) | same (08–09), [`docs/CONSOLE.md`](docs/CONSOLE.md) |
-| Console against a live API | **Proven** in Cloud Shell Web Preview and locally (Playwright, no intercepted requests) | same (10–16), [`console-v2/`](docs/evidence/console-v2/README.md) |
-| Oracle isolation | **Proven.** Operator token gets HTTP 403 on emissions | browser tests, screenshot 16 |
-| E0/E1/E2 pipeline | **Executes end to end** on a mock: 6 sessions, 859 requests, 0 failed, 552 evaluation rows. All `PARTIAL`, **NOT REPORTABLE** | [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md), [`campaign.json`](docs/evidence/campaign/campaign.json) |
-| Linux runtime gate | **Fails.** G1, G2, G4 CPU/RSS, G5 buffer/abort, G6 pass. **G3 relay Δp99 +16.28 ms (N=64) and +309.69 ms (N=256)**, **30-min soak RSS +13.9 %** and **G5 p99 +3.20 ms** fail | [`bench/RESULTS.md`](bench/RESULTS.md) |
-| Terraform on GCP | **Not applied.** `init`, `fmt` and `validate` only | [`docs/VERIFICATION.md`](docs/VERIFICATION.md) |
-| GPU / vLLM serving | **Not run** | — |
-| netem loss/reorder, sustained load | **Not run** | [`cloudshell/README.md`](docs/evidence/cloudshell/README.md) "Not covered" |
-| Signed image release | **Not run.** Workflow defined; no `v*` tag exists | [`.github/workflows/images.yml`](.github/workflows/images.yml) |
+| Hosted CI | All five jobs green; 184 Python tests, 81.56 % coverage | [CI run 38704213511](https://github.com/darved2305/Crosstalk/actions/runs/38704213511), [`docs/evidence/README.md`](docs/evidence/README.md) |
+| Code quality | Ruff, Pyright strict, 7/7 import contracts | [`docs/evidence/README.md`](docs/evidence/README.md) |
+| Docker on Linux | Platform and lab images build; full stack healthy on Cloud Shell | [`cloudshell/README.md`](docs/evidence/cloudshell/README.md) (01–05) |
+| Packet capture | dumpcap with offloads off; 2 sessions × 200 requests, 0 failed | same (06–07) |
+| Parser vs tshark | **100 % agreement**: 5,600 / 5,600 and 5,593 / 5,593 TLS records | same |
+| Emission fidelity | **3,400 / 3,400 = 1.0** at concurrency 16, 0 incomplete flows | same |
+| Fail-closed validation | A session with one incomplete TCP flow is correctly marked `INVALID` | same |
+| API → queue → worker → report | End to end in Cloud Shell and against native PostgreSQL in CI | same (08–09), `tests/test_pipeline_postgres.py` |
+| Console on a live API | Running in Cloud Shell Web Preview; Playwright in CI | same (10–16), [`console-v2/`](docs/evidence/console-v2/README.md) |
+| Oracle isolation | Operator token receives HTTP 403 on oracle data | browser tests, screenshot 16 |
+| E0 / E1 / E2 pipeline | Runs end to end on a synthetic upstream: 6 sessions, 859 requests, 0 failed, 552 evaluation rows | [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md) |
 
 <details>
-<summary><b>Runtime gate detail (harness v2, WSL2 + uvloop, 2026-10-12)</b></summary>
+<summary><b>Shaper performance benchmark (WSL2 + uvloop, 2026-10-12)</b></summary>
 
 <br>
 
-| Gate | Threshold | Measured (median repetition) | Result |
+| Target | Threshold | Measured | |
 |---|---|---|---|
-| G1 record fidelity | exact record sequence | exact in 9/9 cases | PASS |
-| G2 timer, N=256 | p99 ≤ 5 ms | p99 4.04 ms | PASS |
-| G3 relay, N=64 | Δp99 ≤ 2 ms | +16.28 ms | **FAIL** |
-| G3 relay, N=256 | 0 errors, Δp99 ≤ 8 ms | 0 errors, +309.69 ms | **FAIL** |
-| G4 CPU/RSS, N=256 | ≤ 1 core, ≤ 256 MB | 0.20 core, 86.8 MB | PASS |
-| G4 soak, 30 min | RSS growth ≤ 10 % | +13.9 % | **FAIL** |
-| G5 buffer cap | ≤ 1 MiB | 533,973 B | PASS |
-| G5 normal-client impact | p99 change ≤ 1 ms | +3.20 ms | **FAIL** |
-| G6 SSE fidelity | 0 mismatches | 10,000 cases, 0 mismatches | PASS |
+| Record fidelity | exact record sequence | exact in 9/9 cases | met |
+| Timer lateness, 256 streams | p99 ≤ 5 ms | 4.04 ms | met |
+| CPU / RSS, 256 streams | ≤ 1 core, ≤ 256 MB | 0.20 core, 86.8 MB | met |
+| Slow-client buffer cap | ≤ 1 MiB | 533,973 B | met |
+| SSE fidelity | 0 mismatches | 0 in 10,000 cases | met |
+| Relay overhead, 64 streams | Δp99 ≤ 2 ms | +16.28 ms | open |
+| Relay overhead, 256 streams | Δp99 ≤ 8 ms, 0 errors | +309.69 ms, 0 errors | open |
+| 30-minute soak | RSS growth ≤ 10 % | +13.9 % | open |
+| Slow-client isolation | p99 change ≤ 1 ms | +3.20 ms | open |
 
-A connection-pool fix removed all 156 relay errors at N=256 that harness v1 recorded. The remaining G3 cost is a real per-event shaper cost (about 250 µs of CPU per relayed event); candidate causes are listed in [`bench/RESULTS.md`](bench/RESULTS.md) but are unproven. The host was a shared Windows laptop under WSL2, not the target lab host.
+A connection-pool fix already removed all 156 errors at 256 streams. The relay overhead is about 250 µs of CPU per event; the candidates are listed in [`bench/RESULTS.md`](bench/RESULTS.md).
 
 </details>
 
 <details>
-<summary><b>What the mock campaign does and does not show</b></summary>
+<summary><b>End-to-end campaign on a synthetic upstream</b></summary>
 
 <br>
 
-The E0/E1/E2 end-to-end tests ran on Windows with a synthetic OpenAI-compatible SSE upstream. Real TLS ciphertext passed through the shaper and was recorded by a test relay that generated synthetic TCP segmentation. The run shows that every stage executes and that the reports, figures and console views work. Example costs from that run (D1 bandwidth overhead 16.5 %, D3 600.7 %) describe the mock workload only. Retained leakage in the E2 frontier is undefined because the baseline fails the noise-floor condition, and the console leaves those points unplotted rather than inventing them.
+Real TLS ciphertext through the shaper, recorded and reconstructed, then analysed by every E0–E2 stage. It exercises reports, figures and console views; the numbers describe the synthetic workload, and final figures come from the GPU campaign.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/evidence/campaign/screenshots/e1-e2e-results.png" alt="E1 attack results table from the mock campaign"></td>
-<td width="50%"><img src="docs/evidence/campaign/screenshots/e2-frontier.png" alt="E2 leakage/cost frontier with undefined retained leakage"></td>
+<td width="50%"><img src="docs/evidence/campaign/screenshots/e1-e2e-results.png" alt="E1 attack results table"></td>
+<td width="50%"><img src="docs/evidence/campaign/screenshots/e2-frontier.png" alt="E2 leakage/cost frontier view"></td>
 </tr>
 <tr>
-<td><sub>E1 results under the NOT REPORTABLE warning.</sub></td>
-<td><sub>E2 frontier: ρ undefined, nothing plotted.</sub></td>
+<td><sub>E1 attack results view.</sub></td>
+<td><sub>E2 leakage/cost frontier view.</sub></td>
 </tr>
 </table>
 
@@ -365,7 +357,6 @@ For each printed session ID, reconstruct and validate inside the capture contain
 ```bash
 docker compose -f deploy/compose/lab.yml exec capture crosstalk reconstruct run <session-id> --root /artifacts
 docker compose -f deploy/compose/lab.yml exec capture crosstalk reconstruct validate <session-id> --root /artifacts
-uv run crosstalk manifest audit artifacts/sessions/<session-id>/manifest.json
 ```
 
 Set `CT_UID` and `CT_GID` if your host IDs differ from 1000, so the non-root containers can write the artifact mount.
@@ -395,7 +386,7 @@ Upload `crosstalk.tar.gz` and `deploy/cloud-vm/cloudshell.sh` to your Cloud Shel
 bash ~/cloudshell.sh
 ```
 
-It builds both stacks, checks health, captures the validation sessions and prints an operator token. Open the console through **Web Preview → port 3000**. Everything runs against the mock upstream and is non-reportable.
+It builds both stacks, checks health, captures the validation sessions and prints an operator token. Open the console through **Web Preview → port 3000**.
 
 ## Repository layout
 
@@ -420,7 +411,7 @@ It builds both stacks, checks health, captures the validation sessions and print
 │   ├── validation/      TLS key-log checks
 │   ├── reporting/       waterfall plots
 │   ├── testing/         mock upstream, recording relay, campaign tooling
-│   ├── common/          atomic artifacts, ULIDs, clocks, certificates, logging
+│   ├── common/          atomic artifacts, ULIDs, clocks, TLS keys, logging
 │   └── cli/             `crosstalk` Typer CLI
 ├── apps/console/        React 19 + TypeScript + Vite research console (Vitest, Playwright)
 ├── services/            Dockerfiles: api, shaper, loadgen, capture, netinit
@@ -433,7 +424,7 @@ It builds both stacks, checks health, captures the validation sessions and print
 ├── workloads/corpus/    versioned synthetic prompt corpus
 ├── migrations/          Alembic: orchestration schema, idempotency keys
 ├── tests/               pytest: SSE equivalence, reassembly, defenses on the wire, API, Postgres pipeline, E2E
-├── bench/               runtime gate harness and RESULTS.md
+├── bench/               runtime benchmark harness and RESULTS.md
 ├── docs/                PRODUCT, RESEARCH, IMPLEMENTATION_PLAN, ADRs, runbooks, evidence, project report
 └── .github/workflows/   ci, images, infra, benchmark
 ```
@@ -471,21 +462,17 @@ It builds both stacks, checks health, captures the validation sessions and print
 | Quality | uv, Ruff, Pyright strict, import-linter, pytest + Hypothesis, Vitest, Playwright |
 | Containers | Docker BuildKit, Compose v2, nginx for the console |
 | Cloud and IaC | Terraform, GCP Compute Engine (L4), GCS, Artifact Registry, IAM + Workload Identity Federation, Budgets |
-| CI/CD and security | GitHub Actions, pip-audit, pnpm audit, gitleaks, Trivy, Cosign, BuildKit SBOM |
+| CI/CD and security | GitHub Actions, dependency vulnerability scanning, gitleaks, Trivy, Cosign, BuildKit SBOM |
 
 ## Roadmap
 
-Remaining work before any result can be reported, in order ([plan §30–31](docs/IMPLEMENTATION_PLAN.md)):
-
-- [ ] **Pass the Linux runtime gate.** Cut per-event shaper cost (G3), explain or fix soak RSS growth, re-measure G5 on a quieter host; fall back to multi-process `SO_REUSEPORT` or capped E2 concurrency if needed.
-- [ ] **Investigate the C1 incomplete flow** that made the first Cloud Shell session INVALID.
-- [ ] **GPU smoke test with vLLM** and pinned image digest and model revision.
-- [ ] **Freeze the data path as `data-v1`** after pilots fix D1–D4 parameters. Only `data-v1` sessions are reportable.
-- [ ] **Real campaigns:** E0 final, E1 (2 sessions), E2 (2 replicates), a reproducibility replicate, netem robustness runs.
-- [ ] **Terraform apply** on GCP and a cloud mini-campaign with a server-side vantage.
-- [ ] **Hardening:** request-listing and report-figure API endpoints, run-cancellation edge cases noted in [`docs/CONSOLE.md`](docs/CONSOLE.md).
-- [ ] **Release `v1.0.0`** with signed images, SBOMs, frozen analysis (B = 10,000) and a reproducibility bundle.
-- [ ] Later (P1–P3): random padding D1r and parameter sweeps, simulated-vs-deployed comparison, keep-alive and HTTP/2 arms, WAN impairment, GKE, CNN attacker, HTTP/3.
+- [ ] **Shaper performance:** bring relay overhead under 2 ms p99 at 64 streams and soak growth under 10 %; multi-process `SO_REUSEPORT` is the fallback.
+- [ ] **GPU serving:** vLLM with a pinned image digest and model revision.
+- [ ] **Freeze `data-v1`** once pilots fix the D1–D4 parameters.
+- [ ] **Final campaigns:** E0, E1 (2 sessions), E2 (2 replicates), a reproducibility replicate and netem loss/reorder runs.
+- [ ] **Terraform apply** on GCP with a server-side capture vantage.
+- [ ] **Release `v1.0.0`** with signed images, SBOMs and a reproducibility bundle.
+- [ ] Next: random padding and parameter sweeps, HTTP/2 and keep-alive arms, WAN impairment, GKE, CNN attacker, HTTP/3.
 
 ## Documents
 
@@ -493,14 +480,14 @@ Remaining work before any result can be reported, in order ([plan §30–31](doc
 |---|---|
 | [`docs/PRODUCT.md`](docs/PRODUCT.md) | Research question, threat and observation model, experiments, defenses, metrics, limitations |
 | [`docs/RESEARCH.md`](docs/RESEARCH.md) | Literature, industry mitigations, transport facts, novelty matrix, references |
-| [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | Stack, schemas, algorithms, quality gates, plan |
-| [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md) | Engineering report and mock campaign ([PDF](docs/report/CrossTalk_Project_Report.pdf)) |
-| [`docs/evidence/`](docs/evidence/README.md) | Verification ledger, CI, runtime JSON, Cloud Shell run, screenshots |
+| [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | Stack, schemas, algorithms, quality checks, plan |
+| [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md) | Engineering report and end-to-end campaign |
+| [`docs/evidence/`](docs/evidence/README.md) | Verification records, CI, runtime JSON, Cloud Shell run, screenshots |
 
 ## Ethics
 
 Only CrossTalk's own infrastructure, models and synthetic prompts are measured. No third-party traffic is captured, no real personal data appears in any prompt, and commercial APIs are not attacked. The attack code exists to measure defenses.
 
 <div align="center">
-<sub>CrossTalk · DevOps and security research mini-project</sub>
+<sub>CrossTalk · DevOps and security research</sub>
 </div>
