@@ -10,6 +10,7 @@ from crosstalk.capture.packet import TCPPacket, parse_tcp
 from crosstalk.capture.pcap import read_capture
 from crosstalk.capture.tcp import TCPStream
 from crosstalk.capture.tls import TLSRecord, classify_records, parse_records
+from crosstalk.common.artifacts import creation_mode
 from crosstalk.common.errors import ReconstructionError, ValidationError
 from crosstalk.contracts.parquet import BatchTableWriter, read_table, write_table
 from crosstalk.contracts.tables import schema_for
@@ -48,6 +49,7 @@ def _write_table(path: Path, name: str, rows: list[dict[str, object]]) -> None:
         write_table(pa.Table.from_pylist(rows, schema=schema_for(name)), temporary)
         if path.exists():
             raise ValidationError(f"Artifact already exists: {path}")
+        os.chmod(temporary, creation_mode())
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):

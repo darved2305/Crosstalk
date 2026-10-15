@@ -24,6 +24,14 @@ def canonical_json(value: Mapping[str, object]) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
+def creation_mode() -> int:
+    # mkstemp creates 0600 files; give the artifact the mode open() would have,
+    # so a root-written file in a shared bind mount stays readable by the host user.
+    umask = os.umask(0)
+    os.umask(umask)
+    return 0o666 & ~umask
+
+
 def atomic_write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -34,6 +42,7 @@ def atomic_write(path: Path, data: bytes) -> None:
             output.write(data)
             output.flush()
             os.fsync(output.fileno())
+        os.chmod(temporary, creation_mode())
         if path.exists():
             raise ValidationError(f"Artifact already exists: {path}")
         os.replace(temporary, path)
@@ -51,6 +60,7 @@ def atomic_replace(path: Path, data: bytes) -> None:
             output.write(data)
             output.flush()
             os.fsync(output.fileno())
+        os.chmod(temporary, creation_mode())
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):

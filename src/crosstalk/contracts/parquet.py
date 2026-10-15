@@ -7,6 +7,7 @@ from typing import Protocol, cast
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from crosstalk.common.artifacts import creation_mode
 from crosstalk.common.errors import ValidationError
 
 
@@ -69,6 +70,7 @@ class BatchTableWriter:
             if error_type is None and self.temporary is not None:
                 if self.path.exists():
                     raise ValidationError(f"Artifact already exists: {self.path}")
+                os.chmod(self.temporary, creation_mode())
                 os.replace(self.temporary, self.path)
         finally:
             if self.temporary is not None and os.path.exists(self.temporary):
